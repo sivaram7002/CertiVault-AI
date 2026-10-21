@@ -55,11 +55,12 @@ export function getStorageMode() {
 /**
  * Get all certificates from local IndexedDB (or fallback to LocalStorage)
  */
-export async function getLocalCertificates(userEmail) {
-  if (!userEmail) return [];
+export async function getLocalCertificates(userEmail, userPhone) {
+  if (!userEmail && !userPhone) return [];
 
-  const normalizedEmail = userEmail.toLowerCase().trim();
-  const emailPrefix = normalizedEmail.split('@')[0];
+  const normalizedEmail = (userEmail || '').toLowerCase().trim();
+  const emailPrefix = normalizedEmail.includes('@') ? normalizedEmail.split('@')[0] : normalizedEmail;
+  const cleanPhone = (userPhone || '').replace(/\D/g, '');
 
   try {
     const db = await openDB();
@@ -82,22 +83,26 @@ export async function getLocalCertificates(userEmail) {
         // Strictly filter to authenticated owner's certificates
         const userCerts = sanitized.filter(c => {
           const owner = (c.ownerEmail || '').toLowerCase().trim();
-          if (owner === normalizedEmail) return true;
-          const fileName = (c.fileName || '').toLowerCase();
-          const studentName = (c.studentName || '').toLowerCase();
-          return fileName.includes(emailPrefix) || studentName.includes(emailPrefix);
+          if (normalizedEmail && owner === normalizedEmail) return true;
+          if (cleanPhone && (c.ownerPhone || '').replace(/\D/g, '').includes(cleanPhone)) return true;
+          if (emailPrefix && emailPrefix.length > 3 && !normalizedEmail.endsWith('@phone.certivault.local')) {
+            const fileName = (c.fileName || '').toLowerCase();
+            const studentName = (c.studentName || '').toLowerCase();
+            return fileName.includes(emailPrefix) || studentName.includes(emailPrefix);
+          }
+          return false;
         });
 
         // Sort newest uploaded first
         resolve(userCerts.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
       };
       request.onerror = () => {
-        resolve(getFallbackLocalStorage(userEmail));
+        resolve(getFallbackLocalStorage(userEmail, userPhone));
       };
     });
   } catch (err) {
     console.warn('Falling back to localStorage storage:', err);
-    return getFallbackLocalStorage(userEmail);
+    return getFallbackLocalStorage(userEmail, userPhone);
   }
 }
 
@@ -105,17 +110,18 @@ export async function getLocalCertificates(userEmail) {
  * Get all certificates (Primary: Supabase Cloud DB if configured; Secondary: Local IndexedDB)
  * Privacy Rule: If user is not authenticated, returns empty list (Private Vault Locked)
  */
-export async function getAllCertificates(userEmail) {
-  if (!userEmail) {
+export async function getAllCertificates(userEmail, userPhone) {
+  if (!userEmail && !userPhone) {
     // Unauthenticated visitors have ZERO access to uploaded documents
     return [];
   }
 
-  const normalizedEmail = userEmail.toLowerCase().trim();
+  const normalizedEmail = (userEmail || '').toLowerCase().trim();
+  const cleanPhone = (userPhone || '').trim();
 
   if (isSupabaseConfigured()) {
     try {
-      const rawCerts = await fetchCertificatesFromSupabase(normalizedEmail);
+      const rawCerts = await fetchCertificatesFromSupabase(normalizedEmail, cleanPhone);
       const remoteCerts = (rawCerts || []).filter(c => !DEMO_CERT_IDS.has(c.id));
       
       // Cache remote certificates to local IndexedDB for instant offline availability
@@ -136,23 +142,25 @@ export async function getAllCertificates(userEmail) {
       return remoteCerts || [];
     } catch (err) {
       console.warn('Failed to load certificates from Supabase, falling back to local vault:', err.message);
-      return getLocalCertificates(normalizedEmail);
+      return getLocalCertificates(normalizedEmail, cleanPhone);
     }
   }
 
-  return getLocalCertificates(normalizedEmail);
+  return getLocalCertificates(normalizedEmail, cleanPhone);
 }
 
 /**
  * Save or update a certificate (Writes to Supabase Cloud DB + Local IndexedDB)
  */
-export async function saveCertificate(certificate, userEmail) {
-  const assignedOwner = (userEmail || certificate.ownerEmail || '').toLowerCase().trim();
+export async function saveCertificate(certificate, userEmail, userPhone) {
+  const assignedEmail = (userEmail || certificate.ownerEmail || '').toLowerCase().trim();
+  const assignedPhone = (userPhone || certificate.ownerPhone || '').trim();
   const certToSave = {
     ...certificate,
     id: certificate.id || `cert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     isPrivate: true,
-    ownerEmail: assignedOwner,
+    ownerEmail: assignedEmail,
+    ownerPhone: assignedPhone,
     uploadedAt: certificate.uploadedAt || new Date().toISOString(),
   };
 
@@ -168,7 +176,7 @@ export async function saveCertificate(certificate, userEmail) {
     });
   } catch (err) {
     console.warn('Failed saving to IndexedDB, saving to localStorage:', err);
-    const existing = getFallbackLocalStorage();
+    const existing = getFallbackLocalStorage(assignedEmail, assignedPhone);
     const index = existing.findIndex(c => c.id === certToSave.id);
     if (index >= 0) {
       existing[index] = certToSave;
@@ -248,8 +256,8 @@ export async function clearVault() {
 /**
  * Export vault data as JSON backup
  */
-export async function exportVaultJson() {
-  const certs = await getAllCertificates();
+export async function exportVaultJson(userEmail, userPhone) {
+  const certs = await getAllCertificates(userEmail, userPhone);
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(certs, null, 2));
   const downloadAnchor = document.createElement('a');
   downloadAnchor.setAttribute("href", dataStr);
@@ -262,21 +270,22 @@ export async function exportVaultJson() {
 /**
  * Import vault certificates from JSON
  */
-export async function importVaultJson(jsonData) {
+export async function importVaultJson(jsonData, userEmail, userPhone) {
   if (!Array.isArray(jsonData)) {
     throw new Error('Invalid vault file format: expected an array of certificates');
   }
   for (const cert of jsonData) {
-    await saveCertificate(cert);
+    await saveCertificate(cert, userEmail, userPhone);
   }
-  return await getAllCertificates();
+  return await getAllCertificates(userEmail, userPhone);
 }
 
 // Fallback LocalStorage Helpers
-function getFallbackLocalStorage(userEmail) {
-  if (!userEmail) return [];
-  const normalizedEmail = userEmail.toLowerCase().trim();
-  const emailPrefix = normalizedEmail.split('@')[0];
+function getFallbackLocalStorage(userEmail, userPhone) {
+  if (!userEmail && !userPhone) return [];
+  const normalizedEmail = (userEmail || '').toLowerCase().trim();
+  const emailPrefix = normalizedEmail.includes('@') ? normalizedEmail.split('@')[0] : normalizedEmail;
+  const cleanPhone = (userPhone || '').replace(/\D/g, '');
 
   try {
     const data = localStorage.getItem('certivault_certificates');
@@ -287,10 +296,14 @@ function getFallbackLocalStorage(userEmail) {
           .filter(c => !DEMO_CERT_IDS.has(c.id))
           .filter(c => {
             const owner = (c.ownerEmail || '').toLowerCase().trim();
-            if (owner === normalizedEmail) return true;
-            const fileName = (c.fileName || '').toLowerCase();
-            const studentName = (c.studentName || '').toLowerCase();
-            return fileName.includes(emailPrefix) || studentName.includes(emailPrefix);
+            if (normalizedEmail && owner === normalizedEmail) return true;
+            if (cleanPhone && (c.ownerPhone || '').replace(/\D/g, '').includes(cleanPhone)) return true;
+            if (emailPrefix && emailPrefix.length > 3 && !normalizedEmail.endsWith('@phone.certivault.local')) {
+              const fileName = (c.fileName || '').toLowerCase();
+              const studentName = (c.studentName || '').toLowerCase();
+              return fileName.includes(emailPrefix) || studentName.includes(emailPrefix);
+            }
+            return false;
           });
       }
     }

@@ -131,10 +131,10 @@ export default function Navbar({
               </>
             ) : (
               <>
-                <div className="w-4 h-4 rounded-full bg-red-500/15 text-red-400 flex items-center justify-center">
-                  <Mail className="w-2.5 h-2.5" />
+                <div className="w-4 h-4 rounded-full bg-sky-500/15 text-sky-400 flex items-center justify-center">
+                  <User className="w-2.5 h-2.5" />
                 </div>
-                <span className="hidden sm:inline">Gmail Profile</span>
+                <span className="hidden sm:inline">Login (OTP)</span>
                 <span className="sm:hidden">Login</span>
               </>
             )}

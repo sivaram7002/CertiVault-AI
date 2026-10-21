@@ -160,6 +160,7 @@ export function toSupabaseRow(cert) {
       ...(cert.internshipDetails || {}),
       is_private: cert.isPrivate !== undefined ? cert.isPrivate : true,
       owner_email: (cert.ownerEmail || '').toLowerCase().trim(),
+      owner_phone: (cert.ownerPhone || '').trim(),
       privacy_level: 'private'
     },
     qr_code_data: cert.qrCodeData || null,
@@ -203,6 +204,7 @@ export function fromSupabaseRow(row) {
     fileSize: Number(row.file_size) || 0,
     isPrivate: row.internship_details?.is_private ?? true,
     ownerEmail: row.internship_details?.owner_email || '',
+    ownerPhone: row.internship_details?.owner_phone || '',
     uploadedAt: row.uploaded_at || row.created_at || new Date().toISOString()
   };
 }
@@ -265,9 +267,9 @@ export async function testSupabaseConnection(customUrl, customKey) {
 /**
  * Fetch all certificates from Supabase (Strictly private: only returns documents if user is authenticated)
  */
-export async function fetchCertificatesFromSupabase(userEmail) {
+export async function fetchCertificatesFromSupabase(userIdentifier, userPhone) {
   // If user is not logged in, NO certificates are accessible
-  if (!userEmail) {
+  if (!userIdentifier && !userPhone) {
     return [];
   }
 
@@ -286,16 +288,21 @@ export async function fetchCertificatesFromSupabase(userEmail) {
   }
 
   const allCerts = (data || []).map(fromSupabaseRow);
-  const normalizedUserEmail = userEmail.toLowerCase().trim();
-  const emailPrefix = normalizedUserEmail.split('@')[0];
+  const normalizedUserEmail = (userIdentifier || '').toLowerCase().trim();
+  const emailPrefix = normalizedUserEmail.includes('@') ? normalizedUserEmail.split('@')[0] : normalizedUserEmail;
+  const cleanPhone = (userPhone || '').replace(/\D/g, '');
 
-  // Strictly filter only documents belonging to the authenticated Gmail owner
+  // Strictly filter only documents belonging to the authenticated owner
   return allCerts.filter(c => {
     const certOwner = (c.ownerEmail || '').toLowerCase().trim();
-    if (certOwner === normalizedUserEmail) return true;
-    const fileName = (c.fileName || '').toLowerCase();
-    const studentName = (c.studentName || '').toLowerCase();
-    if (fileName.includes(emailPrefix) || studentName.includes(emailPrefix)) return true;
+    if (normalizedUserEmail && certOwner === normalizedUserEmail) return true;
+    if (cleanPhone && (c.ownerPhone || '').replace(/\D/g, '').includes(cleanPhone)) return true;
+    
+    if (emailPrefix && emailPrefix.length > 3 && !normalizedUserEmail.endsWith('@phone.certivault.local')) {
+      const fileName = (c.fileName || '').toLowerCase();
+      const studentName = (c.studentName || '').toLowerCase();
+      if (fileName.includes(emailPrefix) || studentName.includes(emailPrefix)) return true;
+    }
     return false;
   });
 }

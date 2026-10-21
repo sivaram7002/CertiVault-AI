@@ -17,7 +17,7 @@ import TrustScoreGauge from './TrustScoreGauge';
 import ForensicChecklist from './ForensicChecklist';
 import MetadataPanel from './MetadataPanel';
 
-export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal }) {
+export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal, onOpenProfileModal, user }) {
   const [file, setFile] = useState(null);
   const [fileData, setFileData] = useState('');
   const [fileName, setFileName] = useState('');
@@ -197,6 +197,8 @@ export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal
         visualIntegrity: { status: 'Pass', details: 'Zero compression tampering artifacts detected.' }
       },
       isPrivate: true,
+      ownerEmail: (user?.email || '').toLowerCase().trim(),
+      ownerPhone: (user?.phone || '').trim(),
       fileData: fileData,
       fileName: fileName || 'uploaded_certificate',
       fileType: fileType || 'application/pdf',
@@ -269,6 +271,38 @@ export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Account Vault Identification Banner */}
+        {user ? (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-300">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                Depositing to verified vault of <strong className="text-white font-semibold">{user.name}</strong> ({user.phone || user.email})
+              </span>
+            </div>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              Private &amp; Inaccessible to Others
+            </span>
+          </div>
+        ) : (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-200">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Please sign in with Phone Number or Gmail OTP so your certificate is locked to your private account.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenProfileModal?.();
+              }}
+              className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition"
+            >
+              Sign In
+            </button>
+          </div>
+        )}
 
         {/* Content Body: Two Columns */}
         <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6">

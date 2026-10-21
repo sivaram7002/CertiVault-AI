@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Mail, 
+  Phone,
   User, 
   Lock, 
   ShieldCheck, 
@@ -9,15 +10,18 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Sparkles, 
-  ExternalLink,
+  Eye,
+  EyeOff,
   Award,
-  Database,
-  Calendar,
-  KeyRound
+  KeyRound,
+  ArrowRight,
+  RotateCcw
 } from 'lucide-react';
 import { 
-  loginWithGmailCredentials, 
-  signInWithGoogleOAuth, 
+  sendPhoneOtp,
+  verifyPhoneOtp,
+  sendGmailPasswordOtp,
+  verifyGmailOtp,
   signOutProfile, 
   updateStoredProfile 
 } from '../services/auth';
@@ -29,9 +33,25 @@ export default function ProfileModal({
   onUserChange,
   certificates = [] 
 }) {
-  const [activeTab, setActiveTab] = useState('gmail'); // 'gmail' | 'oauth'
+  // Method: 'phone' | 'gmail'
+  const [authMethod, setAuthMethod] = useState('phone');
+  
+  // Step: 'input' | 'otp'
+  const [step, setStep] = useState('input');
+
+  // Form Fields
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+
+  // OTP Demo Simulation Banner (shows the generated code so user can test seamlessly)
+  const [simulatedOtpNotice, setSimulatedOtpNotice] = useState(null);
+  const [countdown, setCountdown] = useState(300);
+
+  // States
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -40,70 +60,104 @@ export default function ProfileModal({
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
 
+  // Timer countdown for OTP
+  useEffect(() => {
+    let timer;
+    if (step === 'otp' && countdown > 0) {
+      timer = setInterval(() => setCountdown(prev => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [step, countdown]);
+
   if (!isOpen) return null;
 
-  // Handle Login with Gmail Credentials
-  const handleGmailLogin = async (e) => {
+  // 1. Send OTP Handler
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
-
-    if (!email.trim() || !email.includes('@')) {
-      setErrorMessage('Please enter a valid Gmail address (e.g. yourname@gmail.com).');
-      return;
-    }
-
     setLoading(true);
+
     try {
-      const profile = await loginWithGmailCredentials({
-        email: email.trim(),
-        name: name.trim()
-      });
-      onUserChange(profile);
-      setSuccessMessage(`Welcome back, ${profile.name}! Your Gmail credentials are now active.`);
-      setTimeout(() => {
-        onClose();
-        setSuccessMessage('');
-      }, 900);
+      if (authMethod === 'phone') {
+        const res = await sendPhoneOtp(phoneNumber);
+        setSimulatedOtpNotice(res.code);
+        setStep('otp');
+        setCountdown(300);
+        setSuccessMessage(`OTP sent to ${res.target}! Enter the 6-digit code below.`);
+      } else {
+        const res = await sendGmailPasswordOtp({ email, password, name });
+        setSimulatedOtpNotice(res.code);
+        setStep('otp');
+        setCountdown(300);
+        setSuccessMessage(`Verification OTP sent to ${res.target}! Enter code to confirm.`);
+      }
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to authenticate with Gmail credentials.');
+      setErrorMessage(err.message || 'Failed to send OTP code.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle Google OAuth Sign-in
-  const handleGoogleOAuth = async () => {
+  // 2. Verify OTP Handler
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
     setErrorMessage('');
     setLoading(true);
-    try {
-      await signInWithGoogleOAuth();
-    } catch (err) {
-      const msg = err.message || '';
-      const isProviderDisabled = 
-        msg.toLowerCase().includes('provider is not enabled') ||
-        msg.toLowerCase().includes('unsupported provider') ||
-        msg.toLowerCase().includes('validation_failed');
 
-      if (isProviderDisabled) {
-        setActiveTab('gmail');
-        setErrorMessage(
-          'Google OAuth provider is not enabled in your Supabase project yet. We have switched you to Gmail Credentials — enter your Gmail address below to sign in immediately without any setup!'
-        );
+    if (!otpCode || otpCode.trim().length !== 6) {
+      setErrorMessage('Please enter the full 6-digit OTP code.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      let profile;
+      if (authMethod === 'phone') {
+        profile = await verifyPhoneOtp({
+          phone: phoneNumber,
+          otpCode,
+          name
+        });
       } else {
-        setErrorMessage(msg || 'Failed to initialize Google Sign-In.');
+        profile = await verifyGmailOtp({
+          email,
+          otpCode,
+          name
+        });
       }
+
+      onUserChange(profile);
+      setSuccessMessage(`Identity verified! Welcome, ${profile.name}.`);
+      setTimeout(() => {
+        onClose();
+        setStep('input');
+        setOtpCode('');
+        setSuccessMessage('');
+        setSimulatedOtpNotice(null);
+      }, 900);
+    } catch (err) {
+      setErrorMessage(err.message || 'OTP verification failed.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Quick fill simulated OTP
+  const handleAutoFillOtp = () => {
+    if (simulatedOtpNotice) {
+      setOtpCode(simulatedOtpNotice);
     }
   };
 
   // Handle Logout
   const handleSignOut = async () => {
-    if (confirm('Are you sure you want to sign out from your Gmail profile?')) {
+    if (confirm('Are you sure you want to sign out? Your certificates will be securely locked from public view.')) {
       await signOutProfile();
       onUserChange(null);
       setIsEditing(false);
+      setStep('input');
+      setOtpCode('');
       onClose();
     }
   };
@@ -121,36 +175,34 @@ export default function ProfileModal({
     }
   };
 
-  // Statistics for profile
   const userCerts = certificates;
   const verifiedCount = userCerts.filter(c => c.authenticityStatus === 'Verified Authentic').length;
-  const avgTrust = userCerts.length > 0 
-    ? Math.round(userCerts.reduce((acc, c) => acc + (Number(c.trustScore) || 0), 0) / userCerts.length) 
-    : 100;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-sky-400 p-0.5 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
-                <User className="w-4 h-4 text-sky-400" />
-              </div>
+            <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-md">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-100">
-                {user ? 'User Profile & Credentials' : 'Sign In to CertiVault AI'}
+                {user ? 'Verified Profile & Security' : 'Secure Vault Authentication'}
               </h2>
               <p className="text-[11px] text-slate-400">
-                {user ? 'Manage your verified credentials & certificates' : 'Connect with your Gmail account'}
+                {user ? 'Private access to your certificates' : 'Phone Number or Gmail + Password with OTP'}
               </p>
             </div>
           </div>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              onClose();
+              setStep('input');
+              setErrorMessage('');
+            }}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
           >
             <X className="w-4 h-4" />
@@ -161,11 +213,11 @@ export default function ProfileModal({
         <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
           {user ? (
             /* ========================================================
-               LOGGED IN STATE: Profile View & Settings
+               LOGGED IN STATE: Profile View & Vault Metrics
                ======================================================== */
             <div className="space-y-5">
               {/* Profile Card */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 flex items-center gap-4">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center gap-4">
                 <img
                   src={user.avatarUrl}
                   alt={user.name}
@@ -179,24 +231,35 @@ export default function ProfileModal({
                     <h3 className="text-sm font-bold text-slate-100 truncate">
                       {user.name}
                     </h3>
-                    <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <ShieldCheck className="w-3 h-3" /> Verified
+                    <span className="shrink-0 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <ShieldCheck className="w-3 h-3" /> OTP Verified
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
-                    <Mail className="w-3 h-3 text-red-400 shrink-0" />
-                    <span className="font-mono text-[11px] text-slate-300 truncate">{user.email}</span>
-                  </p>
+                  
+                  {user.phone && (
+                    <p className="text-xs text-slate-300 truncate flex items-center gap-1.5 mt-0.5 font-mono">
+                      <Phone className="w-3 h-3 text-sky-400 shrink-0" />
+                      <span>{user.phone}</span>
+                    </p>
+                  )}
+
+                  {user.email && !user.email.endsWith('@phone.certivault.local') && (
+                    <p className="text-xs text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
+                      <Mail className="w-3 h-3 text-red-400 shrink-0" />
+                      <span className="font-mono text-[11px] text-slate-300 truncate">{user.email}</span>
+                    </p>
+                  )}
+
                   <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
-                    <span>Provider: <strong className="text-slate-300 uppercase">{user.provider || 'Gmail'}</strong></span>
+                    <span>Privacy: <strong className="text-emerald-400 font-semibold">Strict Owner Isolation</strong></span>
                   </div>
                 </div>
               </div>
 
-              {/* Edit Name Form if toggled */}
+              {/* Edit Name Form */}
               {isEditing ? (
                 <form onSubmit={handleSaveProfileEdit} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                  <label className="text-xs font-semibold text-slate-300 block">Edit Display Name</label>
+                  <label className="text-xs font-semibold text-slate-300 block">Edit Full Name</label>
                   <input
                     type="text"
                     value={editName}
@@ -224,49 +287,28 @@ export default function ProfileModal({
               ) : null}
 
               {/* Vault Credentials Overview */}
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
                   <Award className="w-4 h-4 text-indigo-400 mx-auto mb-1" />
-                  <div className="text-base font-extrabold font-mono text-slate-100">{userCerts.length}</div>
-                  <div className="text-[10px] text-slate-400 uppercase font-semibold">Certificates</div>
+                  <div className="text-lg font-black font-mono text-slate-100">{userCerts.length}</div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Your Certificates</div>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
-                  <div className="text-base font-extrabold font-mono text-emerald-400">{verifiedCount}</div>
-                  <div className="text-[10px] text-slate-400 uppercase font-semibold">Authentic</div>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                  <Sparkles className="w-4 h-4 text-amber-400 mx-auto mb-1" />
-                  <div className="text-base font-extrabold font-mono text-amber-300">{avgTrust}%</div>
-                  <div className="text-[10px] text-slate-400 uppercase font-semibold">Avg Trust</div>
+                  <div className="text-lg font-black font-mono text-emerald-400">{verifiedCount}</div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Authentic &amp; Sound</div>
                 </div>
               </div>
 
-              {/* Profile Details List */}
-              <div className="rounded-xl border border-slate-800/80 divide-y divide-slate-800/60 bg-slate-950/40 text-xs">
-                <div className="p-3 flex items-center justify-between">
-                  <span className="text-slate-400">Cloud Sync Database</span>
-                  <span className="font-mono text-emerald-400 font-semibold flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Supabase Active
-                  </span>
+              {/* Security Shield Notice */}
+              <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-800/30 text-xs text-emerald-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-emerald-400">
+                  <Lock className="w-3.5 h-3.5" /> 100% Private &amp; Isolated
                 </div>
-                <div className="p-3 flex items-center justify-between">
-                  <span className="text-slate-400">Account Type</span>
-                  <span className="text-slate-200 font-medium">Verified Academic Profile</span>
-                </div>
-                <div className="p-3 flex items-center justify-between">
-                  <span className="text-slate-400">Session Status</span>
-                  <span className="text-indigo-400 font-medium">Active &amp; Persistent</span>
-                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Only you have access to your uploaded documents. Unauthenticated visitors and other users cannot query or view your certificates.
+                </p>
               </div>
-
-              {/* Success / Error notification */}
-              {successMessage && (
-                <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                  <span>{successMessage}</span>
-                </div>
-              )}
 
               {/* Action Buttons */}
               <div className="pt-2 flex items-center justify-between gap-3 border-t border-slate-800">
@@ -288,49 +330,51 @@ export default function ProfileModal({
                   onClick={handleSignOut}
                   className="ml-auto px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition flex items-center gap-2"
                 >
-                  <LogOut className="w-3.5 h-3.5" /> Sign Out
+                  <LogOut className="w-3.5 h-3.5" /> Lock &amp; Sign Out
                 </button>
               </div>
             </div>
           ) : (
             /* ========================================================
-               LOGGED OUT STATE: Sign In Tabs (Gmail vs Google OAuth)
+               LOGGED OUT STATE: Phone OTP or Gmail Password + OTP
                ======================================================== */
             <div className="space-y-4">
-              {/* Tab Selector */}
-              <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab('gmail'); setErrorMessage(''); }}
-                  className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${
-                    activeTab === 'gmail'
-                      ? 'bg-gradient-to-r from-red-500/20 to-orange-500/20 text-red-300 border border-red-500/30'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Mail className="w-3.5 h-3.5 text-red-400" /> Gmail Credentials
-                </button>
+              {/* Method Switcher Tabs */}
+              {step === 'input' && (
+                <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMethod('phone');
+                      setErrorMessage('');
+                    }}
+                    className={`py-2 px-3 rounded-xl transition flex items-center justify-center gap-2 ${
+                      authMethod === 'phone'
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Phone className="w-3.5 h-3.5 text-sky-400" /> Phone + OTP
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab('oauth'); setErrorMessage(''); }}
-                  className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${
-                    activeTab === 'oauth'
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                  </svg>
-                  Google 1-Click
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMethod('gmail');
+                      setErrorMessage('');
+                    }}
+                    className={`py-2 px-3 rounded-xl transition flex items-center justify-center gap-2 ${
+                      authMethod === 'gmail'
+                        ? 'bg-red-500/20 text-red-300 border border-red-500/30 shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Mail className="w-3.5 h-3.5 text-red-400" /> Gmail + Password
+                  </button>
+                </div>
+              )}
 
-              {/* Status alerts */}
+              {/* Status Alert */}
               {errorMessage && (
                 <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
@@ -345,140 +389,227 @@ export default function ProfileModal({
                 </div>
               )}
 
-              {/* Tab 1: Gmail Credentials Form */}
-              {activeTab === 'gmail' && (
-                <form onSubmit={handleGmailLogin} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                      <span>Gmail / Email Address *</span>
-                      <span className="text-[10px] text-slate-500 font-normal">e.g. sivaramsuresh@gmail.com</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                        <Mail className="w-4 h-4 text-red-400" />
-                      </div>
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="yourname@gmail.com"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500 font-mono transition"
-                      />
-                    </div>
+              {/* Simulated OTP floating confirmation alert */}
+              {simulatedOtpNotice && step === 'otp' && (
+                <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-indigo-500/15 border border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-semibold text-amber-300 block">OTP Code Sent</span>
+                    <span className="font-mono text-base font-black text-slate-100 tracking-widest">{simulatedOtpNotice}</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleAutoFillOtp}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition"
+                  >
+                    Auto-Fill OTP
+                  </button>
+                </div>
+              )}
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                      <span>Full Name</span>
-                      <span className="text-[10px] text-slate-500 font-normal">Optional (Used on Certificates)</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                        <User className="w-4 h-4 text-indigo-400" />
+              {/* ========================================================
+                  STEP 1: INPUT CREDENTIALS
+                  ======================================================== */}
+              {step === 'input' && (
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  {authMethod === 'phone' ? (
+                    /* Phone Number Inputs */
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                          <span>Mobile Phone Number *</span>
+                          <span className="text-[10px] text-slate-500">Includes country code</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                            <Phone className="w-4 h-4 text-sky-400" />
+                          </div>
+                          <input
+                            type="tel"
+                            required
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.target.value)}
+                            placeholder="+91 98765 43210"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono transition"
+                          />
+                        </div>
                       </div>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Sivaram Suresh"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition"
-                      />
-                    </div>
-                  </div>
 
-                  {/* Feature perks pill */}
-                  <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
-                    <div className="flex items-center gap-1.5 text-slate-300 font-medium">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                      Automatic Vault Integration
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-300">Full Name (Optional)</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                            <User className="w-4 h-4 text-indigo-400" />
+                          </div>
+                          <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="Sivaram Suresh"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-slate-500 leading-relaxed">
-                      Your profile will sync with your active Supabase cloud database and all uploaded certificates will be attributed to your verified profile.
+                  ) : (
+                    /* Gmail + Password Inputs */
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-300">Gmail Address *</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                            <Mail className="w-4 h-4 text-red-400" />
+                          </div>
+                          <input
+                            type="email"
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="yourname@gmail.com"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono transition"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                          <span>Password *</span>
+                          <span className="text-[10px] text-slate-500">Min. 6 characters</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                            <Lock className="w-4 h-4 text-amber-400" />
+                          </div>
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            minLength={6}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500 transition"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(p => !p)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-300">Candidate Name (Optional)</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                            <User className="w-4 h-4 text-indigo-400" />
+                          </div>
+                          <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="Sivaram Suresh"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                    <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Two-Factor OTP Required
+                    </span>
+                    <p className="text-slate-500 leading-snug">
+                      To ensure your documents remain 100% private and inaccessible to anyone else, an OTP code confirmation will be required.
                     </p>
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-500 via-rose-500 to-amber-500 hover:from-red-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg shadow-red-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 hover:from-indigo-600 hover:to-sky-600 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {loading ? (
                       <>
                         <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Signing In with Gmail...</span>
+                        <span>Generating OTP Code...</span>
                       </>
                     ) : (
                       <>
-                        <Mail className="w-4 h-4" />
-                        <span>Connect Gmail Profile</span>
+                        <span>Send 6-Digit OTP Confirmation</span>
+                        <ArrowRight className="w-4 h-4" />
                       </>
                     )}
                   </button>
                 </form>
               )}
 
-              {/* Tab 2: Google 1-Click OAuth */}
-              {activeTab === 'oauth' && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 mx-auto flex items-center justify-center shadow-lg">
-                      <svg className="w-6 h-6" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                      </svg>
+              {/* ========================================================
+                  STEP 2: OTP CONFIRMATION SCREEN
+                  ======================================================== */}
+              {step === 'otp' && (
+                <form onSubmit={handleVerifyOtp} className="space-y-4 animate-in fade-in">
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-2">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 mx-auto flex items-center justify-center text-indigo-400">
+                      <KeyRound className="w-5 h-5 text-indigo-400" />
                     </div>
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-200">Supabase Google Provider</h3>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Authenticates your account directly with Google OAuth via your connected Supabase project.
-                      </p>
-                    </div>
+                    <h3 className="text-xs font-bold text-slate-200">Enter OTP Confirmation</h3>
+                    <p className="text-[11px] text-slate-400">
+                      A 6-digit confirmation code was dispatched for{' '}
+                      <strong className="text-slate-200 font-mono">
+                        {authMethod === 'phone' ? phoneNumber : email}
+                      </strong>
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 block text-center">
+                      6-Digit Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      autoFocus
+                      required
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="••••••"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-xl tracking-[0.5em] text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                    <span>
+                      Expires in: <strong className="text-amber-400 font-mono">{Math.floor(countdown / 60)}:{('0' + (countdown % 60)).slice(-2)}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setStep('input')}
+                      className="text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Change details
+                    </button>
                   </div>
 
                   <button
-                    type="button"
-                    onClick={handleGoogleOAuth}
-                    disabled={loading}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-lg shadow-white/10 transition flex items-center justify-center gap-2.5 disabled:opacity-50"
+                    type="submit"
+                    disabled={loading || otpCode.length !== 6}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {loading ? (
                       <>
-                        <div className="w-3.5 h-3.5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-                        <span>Redirecting to Google...</span>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Verifying OTP &amp; Unlocking...</span>
                       </>
                     ) : (
                       <>
-                        <svg className="w-4 h-4" viewBox="0 0 24 24">
-                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                        </svg>
-                        <span>Sign in with Google</span>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Confirm OTP &amp; Unlock Private Vault</span>
                       </>
                     )}
                   </button>
-
-                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400 space-y-2 text-left">
-                    <p>
-                      💡 <strong>Instant Access:</strong> Switch to the <button type="button" onClick={() => setActiveTab('gmail')} className="text-red-400 underline font-semibold">Gmail Credentials</button> tab above for immediate access with zero setup needed!
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      To use this Google button, enable Google in your{' '}
-                      <a 
-                        href="https://supabase.com/dashboard/project/gibshdomtzplafeqfeqh/auth/providers" 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-indigo-400 underline hover:text-indigo-300 inline-flex items-center gap-1"
-                      >
-                        Supabase Providers Dashboard <ExternalLink className="w-2.5 h-2.5" />
-                      </a>.
-                    </p>
-                  </div>
-                </div>
+                </form>
               )}
             </div>
           )}

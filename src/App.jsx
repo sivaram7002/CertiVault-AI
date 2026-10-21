@@ -74,9 +74,10 @@ export default function App() {
   }, []);
 
   // Load certificates strictly for authenticated user
-  const loadVault = useCallback(async (overrideEmail) => {
-    const activeEmail = overrideEmail || userProfile?.email;
-    if (!activeEmail) {
+  const loadVault = useCallback(async (overrideEmail, overridePhone) => {
+    const activeEmail = overrideEmail !== undefined ? overrideEmail : userProfile?.email;
+    const activePhone = overridePhone !== undefined ? overridePhone : userProfile?.phone;
+    if (!activeEmail && !activePhone) {
       setCertificates([]);
       setLoading(false);
       return;
@@ -84,18 +85,18 @@ export default function App() {
 
     setLoading(true);
     try {
-      const certs = await getAllCertificates(activeEmail);
+      const certs = await getAllCertificates(activeEmail, activePhone);
       setCertificates(certs);
     } catch (err) {
       console.error('Failed to load certificates:', err);
     } finally {
       setLoading(false);
     }
-  }, [userProfile?.email]);
+  }, [userProfile?.email, userProfile?.phone]);
 
   useEffect(() => {
-    if (userProfile?.email) {
-      loadVault(userProfile.email);
+    if (userProfile?.email || userProfile?.phone) {
+      loadVault(userProfile.email, userProfile.phone);
     } else {
       setCertificates([]);
       setLoading(false);
@@ -146,12 +147,12 @@ export default function App() {
 
   // Handlers
   const handleSaveCertificate = async (newCert) => {
-    const saved = await saveCertificate(newCert, userProfile?.email);
+    const saved = await saveCertificate(newCert, userProfile?.email, userProfile?.phone);
     setCertificates(prev => [saved, ...prev.filter(c => c.id !== saved.id)]);
   };
 
   const handleUpdateCertificate = async (updatedCert) => {
-    const saved = await saveCertificate(updatedCert, userProfile?.email);
+    const saved = await saveCertificate(updatedCert, userProfile?.email, userProfile?.phone);
     setCertificates(prev => prev.map(c => c.id === saved.id ? saved : c));
     setInspectedCert(saved);
   };
@@ -166,7 +167,7 @@ export default function App() {
 
   const handleImportJson = async (json) => {
     try {
-      const imported = await importVaultJson(json);
+      const imported = await importVaultJson(json, userProfile?.email, userProfile?.phone);
       setCertificates(imported);
       alert(`Successfully imported ${json.length} certificates into CertiVault!`);
     } catch (e) {
@@ -190,10 +191,16 @@ export default function App() {
       <Navbar
         user={userProfile}
         onOpenProfile={() => setIsProfileOpen(true)}
-        onOpenUpload={() => setIsUploadOpen(true)}
+        onOpenUpload={() => {
+          if (!userProfile) {
+            setIsProfileOpen(true);
+          } else {
+            setIsUploadOpen(true);
+          }
+        }}
         onOpenApiKey={() => setIsApiKeyOpen(true)}
         onOpenSupabase={() => setIsSupabaseOpen(true)}
-        onExport={exportVaultJson}
+        onExport={() => exportVaultJson(userProfile?.email, userProfile?.phone)}
         onImport={handleImportJson}
       />
 
@@ -230,7 +237,13 @@ export default function App() {
 
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => setIsUploadOpen(true)}
+                onClick={() => {
+                  if (!userProfile) {
+                    setIsProfileOpen(true);
+                  } else {
+                    setIsUploadOpen(true);
+                  }
+                }}
                 className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-lg shadow-indigo-600/20 flex items-center gap-2"
               >
                 <UploadCloud className="w-4 h-4" />
@@ -254,28 +267,28 @@ export default function App() {
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Private Credential Vault
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-100 tracking-tight">
-                Uploaded Documents are Confidential &amp; Private
+                Uploaded Documents are Confidential &amp; Inaccessible
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
-                All certificates, PDFs, and forensic audit records in this vault are strictly private and unavailable to the public. Please connect with your Gmail account to access and inspect your personal documents.
+                All certificates, PDFs, and forensic audit records are strictly confidential. Only the authorized owner can view or access them. Please log in with your Phone Number or Gmail &amp; Password with OTP confirmation to unlock your vault.
               </p>
             </div>
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 onClick={() => setIsProfileOpen(true)}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-red-500 via-rose-500 to-amber-500 hover:from-red-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm shadow-xl shadow-red-500/25 transition flex items-center justify-center gap-2.5"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-600 to-emerald-500 hover:from-sky-600 hover:to-emerald-600 text-white font-bold text-xs sm:text-sm shadow-xl shadow-indigo-500/25 transition flex items-center justify-center gap-2.5"
               >
-                <Mail className="w-4 h-4" />
-                <span>Sign In with Gmail to Unlock Vault</span>
+                <Lock className="w-4 h-4" />
+                <span>Login with Phone / Gmail &amp; OTP</span>
               </button>
 
               <button
-                onClick={() => setIsUploadOpen(true)}
+                onClick={() => setIsProfileOpen(true)}
                 className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4 text-emerald-400" />
-                <span>Deposit New Document</span>
+                <span>Deposit Document (Login Required)</span>
               </button>
             </div>
 
@@ -390,6 +403,8 @@ export default function App() {
         onClose={() => setIsUploadOpen(false)}
         onSave={handleSaveCertificate}
         onOpenApiKeyModal={() => setIsApiKeyOpen(true)}
+        onOpenProfileModal={() => setIsProfileOpen(true)}
+        user={userProfile}
       />
 
       {/* Split-Screen Document & Forensic Inspection Modal */}
