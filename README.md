@@ -2,6 +2,9 @@
 
 **CertiVault AI** is a dark-themed, responsive Course & Internship Certificate Vault with AI-powered multimodal metadata extraction and forensic fraud detection powered by **Google Gemini 2.5 Flash** (`gemini-2.5-flash`).
 
+🌐 **Live Public App:** **[https://sivaram7002.github.io/CertiVault-AI/](https://sivaram7002.github.io/CertiVault-AI/)**  
+📦 **GitHub Repository:** **[https://github.com/sivaram7002/CertiVault-AI](https://github.com/sivaram7002/CertiVault-AI)**
+
 ---
 
 ## 🌟 Key Features
