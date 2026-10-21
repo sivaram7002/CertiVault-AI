@@ -16,6 +16,8 @@ import UploadModal from './components/UploadModal';
 import InspectionModal from './components/InspectionModal';
 import ApiKeyModal from './components/ApiKeyModal';
 import SupabaseModal from './components/SupabaseModal';
+import ProfileModal from './components/ProfileModal';
+import { getCurrentProfile, subscribeToAuthEvents } from './services/auth';
 import { 
   ShieldCheck, 
   UploadCloud, 
@@ -42,9 +44,28 @@ export default function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
   const [isSupabaseOpen, setIsSupabaseOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [inspectedCert, setInspectedCert] = useState(null);
 
+  // Authenticated User Profile
+  const [userProfile, setUserProfile] = useState(null);
+
   const hasCloudDb = isSupabaseConfigured();
+
+  // Load user profile on startup and listen for OAuth changes
+  useEffect(() => {
+    getCurrentProfile().then(p => {
+      if (p) setUserProfile(p);
+    });
+
+    const unsubscribe = subscribeToAuthEvents((p) => {
+      setUserProfile(p);
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
 
   // Load certificates
   const loadVault = useCallback(async () => {
@@ -149,6 +170,8 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       {/* Top Navigation */}
       <Navbar
+        user={userProfile}
+        onOpenProfile={() => setIsProfileOpen(true)}
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenApiKey={() => setIsApiKeyOpen(true)}
         onOpenSupabase={() => setIsSupabaseOpen(true)}
@@ -326,6 +349,15 @@ export default function App() {
         isOpen={isSupabaseOpen}
         onClose={() => setIsSupabaseOpen(false)}
         onConfigUpdated={loadVault}
+      />
+
+      {/* User Profile & Gmail Credentials Modal */}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        user={userProfile}
+        onUserChange={setUserProfile}
+        certificates={certificates}
       />
     </div>
   );

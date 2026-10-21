@@ -8,12 +8,22 @@ import {
   Cpu, 
   Sparkles,
   Database,
-  ExternalLink
+  ExternalLink,
+  User,
+  Mail
 } from 'lucide-react';
 import { getStoredApiKey, getStoredModel } from '../services/gemini';
 import { isSupabaseConfigured } from '../services/supabase';
 
-export default function Navbar({ onOpenUpload, onOpenApiKey, onOpenSupabase, onExport, onImport }) {
+export default function Navbar({ 
+  onOpenUpload, 
+  onOpenApiKey, 
+  onOpenSupabase, 
+  onOpenProfile,
+  user,
+  onExport, 
+  onImport 
+}) {
   const hasApiKey = Boolean(getStoredApiKey());
   const activeModel = getStoredModel();
   const hasSupabase = isSupabaseConfigured();
@@ -92,6 +102,42 @@ export default function Navbar({ onOpenUpload, onOpenApiKey, onOpenSupabase, onE
               {hasApiKey ? 'AI Ready' : 'Built-in'}
             </span>
             <Key className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition" />
+          </button>
+
+          {/* User Profile / Gmail Sign In Pill */}
+          <button
+            onClick={onOpenProfile}
+            title={user ? `Profile: ${user.name} (${user.email})` : 'Sign in with Gmail / Google'}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition group ${
+              user 
+                ? 'bg-slate-900 border-indigo-500/30 hover:border-indigo-500/60 text-slate-200 shadow-sm' 
+                : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white'
+            }`}
+          >
+            {user ? (
+              <>
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="w-4 h-4 rounded-full ring-1 ring-emerald-400/60 object-cover"
+                  onError={(e) => {
+                    e.target.src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name || 'User')}`;
+                  }}
+                />
+                <span className="hidden sm:inline font-medium max-w-[90px] truncate text-slate-200">
+                  {user.name.split(' ')[0]}
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
+              </>
+            ) : (
+              <>
+                <div className="w-4 h-4 rounded-full bg-red-500/15 text-red-400 flex items-center justify-center">
+                  <Mail className="w-2.5 h-2.5" />
+                </div>
+                <span className="hidden sm:inline">Gmail Profile</span>
+                <span className="sm:hidden">Login</span>
+              </>
+            )}
           </button>
 
           {/* Export / Import Vault */}
