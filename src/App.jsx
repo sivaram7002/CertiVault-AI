@@ -6,7 +6,7 @@ import {
   exportVaultJson, 
   importVaultJson 
 } from './services/storage';
-import { isSupabaseConfigured } from './services/supabase';
+import { isSupabaseConfigured, subscribeToRealtimeCertificates } from './services/supabase';
 import Navbar from './components/Navbar';
 import StatsBar from './components/StatsBar';
 import FilterBar from './components/FilterBar';
@@ -24,12 +24,14 @@ import {
   FileCheck, 
   AlertTriangle, 
   Sparkles, 
-  Plus,
-  Eye,
-  Award,
-  Database,
-  Lock,
-  Mail
+  Plus, 
+  Eye, 
+  Award, 
+  Database, 
+  Lock, 
+  Mail,
+  Zap,
+  X
 } from 'lucide-react';
 
 export default function App() {
@@ -52,6 +54,10 @@ export default function App() {
   // Authenticated User Profile
   const [userProfile, setUserProfile] = useState(null);
 
+  // Supabase Realtime Reaction States
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [realtimeToast, setRealtimeToast] = useState(null);
+
   const hasCloudDb = isSupabaseConfigured();
 
   // Load user profile on startup and listen for OAuth changes
@@ -72,6 +78,41 @@ export default function App() {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, []);
+
+  // Supabase Realtime Reaction Listener
+  useEffect(() => {
+    if (!hasCloudDb) return;
+
+    const unsubscribe = subscribeToRealtimeCertificates(
+      (reaction) => {
+        // Trigger live refresh of certificates for active user
+        loadVault();
+
+        const title = reaction.certificate?.courseTitle || reaction.certificate?.studentName || 'Document';
+        const action = reaction.action || 'SYNCHRONIZED';
+        const actionLabel = action === 'DELETE' ? 'removed from' : action === 'UPDATE' ? 'updated in' : 'uploaded to';
+
+        setRealtimeToast({
+          id: Date.now(),
+          action,
+          title,
+          message: `Realtime reaction: "${title}" was ${actionLabel} Supabase Cloud Database.`
+        });
+
+        // Auto-dismiss toast after 4.5 seconds
+        setTimeout(() => {
+          setRealtimeToast((current) => (current?.action === action ? null : current));
+        }, 4500);
+      },
+      (isSubscribed) => {
+        setRealtimeConnected(isSubscribed);
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [hasCloudDb, loadVault]);
 
   // Load certificates strictly for authenticated user
   const loadVault = useCallback(async (overrideEmail, overridePhone) => {
@@ -190,6 +231,7 @@ export default function App() {
       {/* Top Navigation */}
       <Navbar
         user={userProfile}
+        realtimeConnected={realtimeConnected}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenUpload={() => {
           if (!userProfile) {
@@ -438,6 +480,32 @@ export default function App() {
         onUserChange={setUserProfile}
         certificates={certificates}
       />
+
+      {/* Floating Supabase Realtime Reaction Toast */}
+      {realtimeToast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="glass-panel px-4 py-3 rounded-2xl border border-emerald-500/40 bg-slate-900/95 shadow-2xl shadow-emerald-500/10 flex items-center gap-3 text-xs max-w-sm">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                <span>Supabase Realtime Reaction</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-slate-300 truncate mt-0.5 font-medium">
+                {realtimeToast.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setRealtimeToast(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

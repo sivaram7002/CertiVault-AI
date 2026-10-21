@@ -57,6 +57,18 @@ CREATE POLICY "Allow public update access" ON public.certificates FOR UPDATE USI
 
 DROP POLICY IF EXISTS "Allow public delete access" ON public.certificates;
 CREATE POLICY "Allow public delete access" ON public.certificates FOR DELETE USING (true);
+
+-- 4. Enable Supabase Realtime Reactions & Replication
+ALTER TABLE public.certificates REPLICA IDENTITY FULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'certificates'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.certificates;
+  END IF;
+END $$;
 `;
 
 /**
@@ -327,7 +339,10 @@ export async function saveCertificateToSupabase(certificate) {
     throw new Error(`Failed to save to Supabase: ${error.message}`);
   }
 
-  return fromSupabaseRow(data || row);
+  const saved = fromSupabaseRow(data || row);
+  // Broadcast realtime reaction to all connected tabs/devices
+  broadcastCertificateChange('INSERT', saved);
+  return saved;
 }
 
 /**
@@ -347,6 +362,9 @@ export async function deleteCertificateFromSupabase(id) {
   if (error) {
     throw new Error(`Failed to delete from Supabase: ${error.message}`);
   }
+
+  // Broadcast realtime reaction
+  broadcastCertificateChange('DELETE', { id });
 }
 
 /**
@@ -372,4 +390,104 @@ export async function syncLocalCertificatesToSupabase(certificates) {
   }
 
   return rows.length;
+}
+
+/**
+ * Realtime Channel instance
+ */
+let realtimeChannel = null;
+
+/**
+ * Broadcast certificate change event across all active browser sessions
+ */
+export async function broadcastCertificateChange(action, certificate) {
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  try {
+    const channel = client.channel('realtime-certivault');
+    await channel.send({
+      type: 'broadcast',
+      event: 'certificate_reaction',
+      payload: {
+        action, // 'INSERT' | 'UPDATE' | 'DELETE'
+        id: certificate?.id,
+        courseTitle: certificate?.courseTitle,
+        studentName: certificate?.studentName,
+        ownerEmail: certificate?.ownerEmail,
+        ownerPhone: certificate?.ownerPhone,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.warn('Realtime broadcast notice:', err.message);
+  }
+}
+
+/**
+ * Initialize Realtime Reactions for certificates (combines postgres_changes + broadcast)
+ */
+export function subscribeToRealtimeCertificates(onReaction, onStatusChange) {
+  const client = getSupabaseClient();
+  if (!client) return () => {};
+
+  if (realtimeChannel) {
+    try { client.removeChannel(realtimeChannel); } catch (e) {}
+  }
+
+  realtimeChannel = client.channel('realtime-certivault', {
+    config: {
+      broadcast: { self: false }
+    }
+  });
+
+  // 1. Listen for Supabase Postgres Database level changes (INSERT, UPDATE, DELETE)
+  realtimeChannel.on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'certificates'
+    },
+    (payload) => {
+      console.log('⚡ Realtime Postgres Reaction:', payload.eventType, payload.new?.id || payload.old?.id);
+      const row = payload.new || payload.old;
+      const cert = row ? fromSupabaseRow(row) : null;
+      onReaction({
+        source: 'postgres',
+        action: payload.eventType,
+        certificate: cert,
+        id: payload.new?.id || payload.old?.id
+      });
+    }
+  );
+
+  // 2. Listen for Instant Cross-Browser Broadcasts
+  realtimeChannel.on(
+    'broadcast',
+    { event: 'certificate_reaction' },
+    ({ payload }) => {
+      console.log('⚡ Realtime Broadcast Reaction:', payload.action, payload.id);
+      onReaction({
+        source: 'broadcast',
+        action: payload.action,
+        certificate: payload,
+        id: payload.id
+      });
+    }
+  );
+
+  realtimeChannel.subscribe((status) => {
+    console.log('⚡ Realtime Channel Status:', status);
+    if (onStatusChange) {
+      onStatusChange(status === 'SUBSCRIBED');
+    }
+  });
+
+  return () => {
+    if (realtimeChannel) {
+      client.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+  };
 }

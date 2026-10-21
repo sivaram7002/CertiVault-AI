@@ -6,11 +6,12 @@ import {
   Download, 
   Key, 
   Cpu, 
-  Sparkles,
-  Database,
-  ExternalLink,
-  User,
-  Mail
+  Sparkles, 
+  Database, 
+  ExternalLink, 
+  User, 
+  Mail,
+  Zap
 } from 'lucide-react';
 import { getStoredApiKey, getStoredModel } from '../services/gemini';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -21,6 +22,7 @@ export default function Navbar({
   onOpenSupabase, 
   onOpenProfile,
   user,
+  realtimeConnected = false,
   onExport, 
   onImport 
 }) {
@@ -75,17 +77,20 @@ export default function Navbar({
           {/* Supabase Database Status Pill */}
           <button
             onClick={onOpenSupabase}
-            title="Configure Supabase Cloud Database"
+            title={hasSupabase ? (realtimeConnected ? "Supabase Cloud Database • Realtime Active" : "Supabase Cloud Database Connected") : "Configure Supabase Cloud Database"}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900 border border-slate-800 hover:border-slate-700 transition group"
           >
-            <span className={`w-2 h-2 rounded-full ${hasSupabase ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-500'}`} />
+            <span className={`w-2 h-2 rounded-full ${hasSupabase ? (realtimeConnected ? 'bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse' : 'bg-emerald-400 shadow-[0_0_8px_#10b981]') : 'bg-slate-500'}`} />
             <Database className={`w-3.5 h-3.5 ${hasSupabase ? 'text-emerald-400' : 'text-slate-400'} group-hover:text-emerald-400 transition`} />
             <span className="hidden md:inline text-slate-300">
-              {hasSupabase ? 'Supabase DB' : 'Connect DB'}
+              {hasSupabase ? (realtimeConnected ? 'Realtime DB' : 'Supabase DB') : 'Connect DB'}
             </span>
             <span className="md:hidden text-slate-300">
-              {hasSupabase ? 'Supabase' : 'DB'}
+              {hasSupabase ? (realtimeConnected ? 'Live' : 'Supabase') : 'DB'}
             </span>
+            {hasSupabase && (
+              <Zap className={`w-3 h-3 ${realtimeConnected ? 'text-amber-400 fill-amber-400' : 'text-slate-500'}`} />
+            )}
           </button>
 
           {/* API Key Status Pill */}
