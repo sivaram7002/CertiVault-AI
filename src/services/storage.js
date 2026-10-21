@@ -1,0 +1,204 @@
+import { INITIAL_SAMPLE_CERTIFICATES } from './sampleCertificates';
+
+const DB_NAME = 'certivault_ai_db';
+const DB_VERSION = 1;
+const STORE_NAME = 'certificates';
+
+/**
+ * Open or initialize the IndexedDB database
+ */
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error('IndexedDB not supported'));
+      return;
+    }
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        store.createIndex('category', 'category', { unique: false });
+        store.createIndex('platform', 'platform', { unique: false });
+        store.createIndex('authenticityStatus', 'authenticityStatus', { unique: false });
+        store.createIndex('uploadedAt', 'uploadedAt', { unique: false });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Get all certificates from IndexedDB (or seed if empty)
+ */
+export async function getAllCertificates() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+
+    return new Promise((resolve) => {
+      request.onsuccess = async () => {
+        const certs = request.result;
+        if (!certs || certs.length === 0) {
+          // Auto-seed initial realistic demo certificates
+          await seedInitialCertificates();
+          resolve(INITIAL_SAMPLE_CERTIFICATES);
+        } else {
+          // Sort newest uploaded first
+          resolve(certs.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
+        }
+      };
+      request.onerror = () => {
+        resolve(getFallbackLocalStorage());
+      };
+    });
+  } catch (err) {
+    console.warn('Falling back to localStorage storage:', err);
+    return getFallbackLocalStorage();
+  }
+}
+
+/**
+ * Seed initial sample certificates
+ */
+async function seedInitialCertificates() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    for (const cert of INITIAL_SAMPLE_CERTIFICATES) {
+      store.put(cert);
+    }
+  } catch (e) {
+    console.warn('Failed to seed IndexedDB:', e);
+    saveFallbackLocalStorage(INITIAL_SAMPLE_CERTIFICATES);
+  }
+}
+
+/**
+ * Save or update a certificate
+ */
+export async function saveCertificate(certificate) {
+  const certToSave = {
+    ...certificate,
+    id: certificate.id || `cert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    uploadedAt: certificate.uploadedAt || new Date().toISOString(),
+  };
+
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    await new Promise((resolve, reject) => {
+      const request = store.put(certToSave);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.warn('Failed saving to IndexedDB, saving to localStorage:', err);
+    const existing = getFallbackLocalStorage();
+    const index = existing.findIndex(c => c.id === certToSave.id);
+    if (index >= 0) {
+      existing[index] = certToSave;
+    } else {
+      existing.unshift(certToSave);
+    }
+    saveFallbackLocalStorage(existing);
+  }
+
+  return certToSave;
+}
+
+/**
+ * Delete a certificate by ID
+ */
+export async function deleteCertificate(id) {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    await new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.warn('Failed deleting from IndexedDB, using fallback:', err);
+    const existing = getFallbackLocalStorage();
+    const filtered = existing.filter(c => c.id !== id);
+    saveFallbackLocalStorage(filtered);
+  }
+}
+
+/**
+ * Reset vault to default demo certificates
+ */
+export async function resetVaultToDemo() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    await new Promise((resolve, reject) => {
+      const clearRequest = store.clear();
+      clearRequest.onsuccess = () => resolve();
+      clearRequest.onerror = () => reject(clearRequest.error);
+    });
+    await seedInitialCertificates();
+    return INITIAL_SAMPLE_CERTIFICATES;
+  } catch (err) {
+    saveFallbackLocalStorage(INITIAL_SAMPLE_CERTIFICATES);
+    return INITIAL_SAMPLE_CERTIFICATES;
+  }
+}
+
+/**
+ * Export vault data as JSON backup
+ */
+export async function exportVaultJson() {
+  const certs = await getAllCertificates();
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(certs, null, 2));
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", `CertiVault_AI_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+}
+
+/**
+ * Import vault certificates from JSON
+ */
+export async function importVaultJson(jsonData) {
+  if (!Array.isArray(jsonData)) {
+    throw new Error('Invalid vault file format: expected an array of certificates');
+  }
+  for (const cert of jsonData) {
+    await saveCertificate(cert);
+  }
+  return await getAllCertificates();
+}
+
+// Fallback LocalStorage Helpers
+function getFallbackLocalStorage() {
+  try {
+    const data = localStorage.getItem('certivault_certificates');
+    if (data) return JSON.parse(data);
+  } catch (e) {
+    // ignore
+  }
+  return INITIAL_SAMPLE_CERTIFICATES;
+}
+
+function saveFallbackLocalStorage(certs) {
+  try {
+    localStorage.setItem('certivault_certificates', JSON.stringify(certs));
+  } catch (e) {
+    console.warn('LocalStorage save failed:', e);
+  }
+}
