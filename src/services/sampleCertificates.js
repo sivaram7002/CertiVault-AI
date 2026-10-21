@@ -46,7 +46,7 @@ function generateCourseraDeepLearningSvg() {
   <text x="500" y="200" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="14" font-weight="600" letter-spacing="4" text-anchor="middle">SPECIALIZATION CERTIFICATE</text>
   <text x="500" y="235" fill="#f8fafc" font-family="'Plus Jakarta Sans', sans-serif" font-size="28" font-weight="800" text-anchor="middle">This is to certify that</text>
 
-  <text x="500" y="300" fill="url(#goldGrad)" font-family="'Plus Jakarta Sans', Georgia, serif" font-size="42" font-weight="800" text-anchor="middle" letter-spacing="1">Aditya Sharma</text>
+  <text x="500" y="300" fill="url(#goldGrad)" font-family="'Plus Jakarta Sans', Georgia, serif" font-size="42" font-weight="800" text-anchor="middle" letter-spacing="1">Sivaram Suresh</text>
   <line x1="300" y1="320" x2="700" y2="320" stroke="#334155" stroke-width="1.5" />
 
   <text x="500" y="360" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="16" text-anchor="middle">has successfully completed all 5 courses in the online, non-credit Specialization</text>
@@ -286,7 +286,7 @@ function generateSuspiciousTamperedSvg() {
 export const INITIAL_SAMPLE_CERTIFICATES = [
   {
     id: "cert-coursera-deeplearning-01",
-    studentName: "Aditya Sharma",
+    studentName: "Sivaram Suresh",
     platform: "Coursera / DeepLearning.AI",
     courseTitle: "Deep Learning Specialization",
     totalDuration: "16 Weeks (approx. 120 Hours)",
@@ -325,7 +325,7 @@ export const INITIAL_SAMPLE_CERTIFICATES = [
       }
     },
     fileData: generateCourseraDeepLearningSvg(),
-    fileName: "Deep_Learning_Specialization_Aditya_Sharma.svg",
+    fileName: "Deep_Learning_Specialization_Sivaram_Suresh.svg",
     fileType: "image/svg+xml",
     fileSize: 4820,
     uploadedAt: "2024-08-15T10:30:00.000Z"

@@ -409,6 +409,7 @@ export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal
                 qrResult={qrResult}
                 onRescanQr={() => scanOpticalQr()}
                 isScanningQr={isScanningQr}
+                onUpdateStudentName={(newName) => setStudentName(newName)}
               />
             ) : (
               <div className="p-10 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 flex flex-col items-center justify-center space-y-2">

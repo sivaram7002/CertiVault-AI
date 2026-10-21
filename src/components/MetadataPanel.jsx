@@ -19,7 +19,8 @@ import {
   Lock, 
   RotateCw,
   FolderGit2,
-  FileBadge
+  FileBadge,
+  Pencil
 } from 'lucide-react';
 import TrustScoreGauge from './TrustScoreGauge';
 
@@ -27,9 +28,12 @@ export default function MetadataPanel({
   certificate, 
   qrResult = null, 
   onRescanQr = null,
-  isScanningQr = false 
+  isScanningQr = false,
+  onUpdateStudentName = null
 }) {
   const [copiedKey, setCopiedKey] = useState(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   if (!certificate) return null;
 
@@ -96,9 +100,58 @@ export default function MetadataPanel({
           </span>
         </div>
         <div className="mt-1">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-50 tracking-tight">
-            {studentName || 'Recipient Name Unspecified'}
-          </h2>
+          {isEditingName ? (
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (onUpdateStudentName && nameInput.trim()) {
+                      onUpdateStudentName(nameInput.trim());
+                    }
+                    setIsEditingName(false);
+                  }
+                }}
+                className="bg-slate-950 border border-emerald-500/50 rounded-lg px-3 py-1.5 text-base font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 w-full"
+                autoFocus
+                placeholder="Enter exact recipient name"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (onUpdateStudentName && nameInput.trim()) {
+                    onUpdateStudentName(nameInput.trim());
+                  }
+                  setIsEditingName(false);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shrink-0 transition"
+              >
+                Save
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-50 tracking-tight">
+                {studentName || 'Recipient Name Unspecified'}
+              </h2>
+              {onUpdateStudentName && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNameInput(studentName || '');
+                    setIsEditingName(true);
+                  }}
+                  className="text-xs text-slate-400 hover:text-emerald-400 flex items-center gap-1 font-semibold transition px-2 py-1 rounded-md hover:bg-slate-800"
+                  title="Correct student name if needed"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
+          )}
           <p className="text-[11px] text-slate-400 mt-0.5">
             Official recipient name identified and extracted directly from document typography.
           </p>

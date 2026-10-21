@@ -50,8 +50,19 @@ export async function getAllCertificates() {
           await seedInitialCertificates();
           resolve(INITIAL_SAMPLE_CERTIFICATES);
         } else {
+          // Auto-migrate legacy cached Aditya Sharma sample cert if present
+          const sanitized = certs.map(c => {
+            if (c.studentName === 'Aditya Sharma' || c.id === 'cert-coursera-deeplearning-01') {
+              return {
+                ...c,
+                studentName: 'Sivaram Suresh',
+                fileName: c.fileName?.replace('Aditya_Sharma', 'Sivaram_Suresh') || c.fileName
+              };
+            }
+            return c;
+          });
           // Sort newest uploaded first
-          resolve(certs.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
+          resolve(sanitized.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
         }
       };
       request.onerror = () => {
@@ -188,7 +199,19 @@ export async function importVaultJson(jsonData) {
 function getFallbackLocalStorage() {
   try {
     const data = localStorage.getItem('certivault_certificates');
-    if (data) return JSON.parse(data);
+    if (data) {
+      const parsed = JSON.parse(data);
+      return parsed.map(c => {
+        if (c.studentName === 'Aditya Sharma' || c.id === 'cert-coursera-deeplearning-01') {
+          return {
+            ...c,
+            studentName: 'Sivaram Suresh',
+            fileName: c.fileName?.replace('Aditya_Sharma', 'Sivaram_Suresh') || c.fileName
+          };
+        }
+        return c;
+      });
+    }
   } catch (e) {
     // ignore
   }
