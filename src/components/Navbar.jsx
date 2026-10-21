@@ -11,10 +11,12 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { getStoredApiKey, getStoredModel } from '../services/gemini';
+import { isSupabaseConfigured } from '../services/supabase';
 
-export default function Navbar({ onOpenUpload, onOpenApiKey, onExport, onImport }) {
+export default function Navbar({ onOpenUpload, onOpenApiKey, onOpenSupabase, onExport, onImport }) {
   const hasApiKey = Boolean(getStoredApiKey());
   const activeModel = getStoredModel();
+  const hasSupabase = isSupabaseConfigured();
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
@@ -60,6 +62,22 @@ export default function Navbar({ onOpenUpload, onOpenApiKey, onExport, onImport 
 
         {/* Right side controls */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Supabase Database Status Pill */}
+          <button
+            onClick={onOpenSupabase}
+            title="Configure Supabase Cloud Database"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900 border border-slate-800 hover:border-slate-700 transition group"
+          >
+            <span className={`w-2 h-2 rounded-full ${hasSupabase ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-500'}`} />
+            <Database className={`w-3.5 h-3.5 ${hasSupabase ? 'text-emerald-400' : 'text-slate-400'} group-hover:text-emerald-400 transition`} />
+            <span className="hidden md:inline text-slate-300">
+              {hasSupabase ? 'Supabase DB' : 'Connect DB'}
+            </span>
+            <span className="md:hidden text-slate-300">
+              {hasSupabase ? 'Supabase' : 'DB'}
+            </span>
+          </button>
+
           {/* API Key Status Pill */}
           <button
             onClick={onOpenApiKey}

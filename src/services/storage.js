@@ -1,4 +1,11 @@
 import { INITIAL_SAMPLE_CERTIFICATES } from './sampleCertificates';
+import { 
+  isSupabaseConfigured, 
+  fetchCertificatesFromSupabase, 
+  saveCertificateToSupabase, 
+  deleteCertificateFromSupabase,
+  syncLocalCertificatesToSupabase 
+} from './supabase';
 
 const DB_NAME = 'certivault_ai_db';
 const DB_VERSION = 1;
@@ -33,9 +40,16 @@ function openDB() {
 }
 
 /**
- * Get all certificates from IndexedDB (or seed if empty)
+ * Get current storage mode: 'supabase' (Cloud DB) or 'indexeddb' (Local Vault)
  */
-export async function getAllCertificates() {
+export function getStorageMode() {
+  return isSupabaseConfigured() ? 'supabase' : 'indexeddb';
+}
+
+/**
+ * Get all certificates from local IndexedDB (or fallback to LocalStorage)
+ */
+export async function getLocalCertificates() {
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readonly');
@@ -76,7 +90,41 @@ export async function getAllCertificates() {
 }
 
 /**
- * Seed initial sample certificates
+ * Get all certificates (Primary: Supabase Cloud DB if configured; Secondary: Local IndexedDB)
+ */
+export async function getAllCertificates() {
+  if (isSupabaseConfigured()) {
+    try {
+      const remoteCerts = await fetchCertificatesFromSupabase();
+      
+      // Cache remote certificates to local IndexedDB for instant offline availability
+      if (Array.isArray(remoteCerts) && remoteCerts.length > 0) {
+        try {
+          const db = await openDB();
+          const transaction = db.transaction(STORE_NAME, 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+          for (const cert of remoteCerts) {
+            store.put(cert);
+          }
+        } catch (e) {
+          console.warn('Failed to cache remote certificates locally:', e);
+        }
+        return remoteCerts;
+      }
+      
+      // If Supabase table is brand new and empty, return empty array so user can deposit their first certificate
+      return remoteCerts || [];
+    } catch (err) {
+      console.warn('Failed to load certificates from Supabase, falling back to local vault:', err.message);
+      return getLocalCertificates();
+    }
+  }
+
+  return getLocalCertificates();
+}
+
+/**
+ * Seed initial sample certificates to local storage
  */
 async function seedInitialCertificates() {
   try {
@@ -93,7 +141,7 @@ async function seedInitialCertificates() {
 }
 
 /**
- * Save or update a certificate
+ * Save or update a certificate (Writes to Supabase Cloud DB + Local IndexedDB)
  */
 export async function saveCertificate(certificate) {
   const certToSave = {
@@ -102,6 +150,7 @@ export async function saveCertificate(certificate) {
     uploadedAt: certificate.uploadedAt || new Date().toISOString(),
   };
 
+  // 1. Save to local IndexedDB (always keep local cache immediate)
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -123,13 +172,27 @@ export async function saveCertificate(certificate) {
     saveFallbackLocalStorage(existing);
   }
 
+  // 2. Save to Supabase Cloud Database if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const savedRemote = await saveCertificateToSupabase(certToSave);
+      return savedRemote || certToSave;
+    } catch (err) {
+      console.error('Supabase cloud database save error:', err);
+      // Still return certToSave because local save succeeded
+      certToSave._cloudSyncWarning = err.message;
+      return certToSave;
+    }
+  }
+
   return certToSave;
 }
 
 /**
- * Delete a certificate by ID
+ * Delete a certificate by ID (Deletes from Supabase + Local Storage)
  */
 export async function deleteCertificate(id) {
+  // 1. Delete from local storage
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -144,6 +207,15 @@ export async function deleteCertificate(id) {
     const existing = getFallbackLocalStorage();
     const filtered = existing.filter(c => c.id !== id);
     saveFallbackLocalStorage(filtered);
+  }
+
+  // 2. Delete from Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      await deleteCertificateFromSupabase(id);
+    } catch (err) {
+      console.error('Supabase delete error:', err);
+    }
   }
 }
 
@@ -161,11 +233,20 @@ export async function resetVaultToDemo() {
       clearRequest.onerror = () => reject(clearRequest.error);
     });
     await seedInitialCertificates();
-    return INITIAL_SAMPLE_CERTIFICATES;
   } catch (err) {
     saveFallbackLocalStorage(INITIAL_SAMPLE_CERTIFICATES);
-    return INITIAL_SAMPLE_CERTIFICATES;
   }
+
+  // Sync demo certificates to Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      await syncLocalCertificatesToSupabase(INITIAL_SAMPLE_CERTIFICATES);
+    } catch (err) {
+      console.warn('Could not sync demo certs to Supabase:', err);
+    }
+  }
+
+  return INITIAL_SAMPLE_CERTIFICATES;
 }
 
 /**

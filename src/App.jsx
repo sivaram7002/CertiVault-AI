@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   getAllCertificates, 
   saveCertificate, 
@@ -7,6 +7,7 @@ import {
   exportVaultJson, 
   importVaultJson 
 } from './services/storage';
+import { isSupabaseConfigured } from './services/supabase';
 import Navbar from './components/Navbar';
 import StatsBar from './components/StatsBar';
 import FilterBar from './components/FilterBar';
@@ -15,6 +16,7 @@ import CertificateTable from './components/CertificateTable';
 import UploadModal from './components/UploadModal';
 import InspectionModal from './components/InspectionModal';
 import ApiKeyModal from './components/ApiKeyModal';
+import SupabaseModal from './components/SupabaseModal';
 import { 
   ShieldCheck, 
   UploadCloud, 
@@ -24,7 +26,8 @@ import {
   RotateCcw,
   Plus,
   Eye,
-  Award
+  Award,
+  Database
 } from 'lucide-react';
 
 export default function App() {
@@ -40,22 +43,27 @@ export default function App() {
   // Modals
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
+  const [isSupabaseOpen, setIsSupabaseOpen] = useState(false);
   const [inspectedCert, setInspectedCert] = useState(null);
 
-  // Load certificates on mount
-  useEffect(() => {
-    async function loadVault() {
-      try {
-        const certs = await getAllCertificates();
-        setCertificates(certs);
-      } catch (err) {
-        console.error('Failed to load certificates from IndexedDB:', err);
-      } finally {
-        setLoading(false);
-      }
+  const hasCloudDb = isSupabaseConfigured();
+
+  // Load certificates
+  const loadVault = useCallback(async () => {
+    setLoading(true);
+    try {
+      const certs = await getAllCertificates();
+      setCertificates(certs);
+    } catch (err) {
+      console.error('Failed to load certificates:', err);
+    } finally {
+      setLoading(false);
     }
-    loadVault();
   }, []);
+
+  useEffect(() => {
+    loadVault();
+  }, [loadVault]);
 
   // Filter & Sort computations
   const filteredCertificates = useMemo(() => {
@@ -152,6 +160,7 @@ export default function App() {
       <Navbar
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenApiKey={() => setIsApiKeyOpen(true)}
+        onOpenSupabase={() => setIsSupabaseOpen(true)}
         onExport={exportVaultJson}
         onImport={handleImportJson}
       />
@@ -161,9 +170,23 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Forensic Document Vision Active</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Forensic Document Vision Active</span>
+                </div>
+
+                <button
+                  onClick={() => setIsSupabaseOpen(true)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    hasCloudDb 
+                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20' 
+                      : 'bg-slate-900 border border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <Database className={`w-3.5 h-3.5 ${hasCloudDb ? 'text-emerald-400' : 'text-slate-400'}`} />
+                  <span>{hasCloudDb ? 'Supabase Database Connected' : 'Storage: Local Vault (Click to connect Supabase)'}</span>
+                </button>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-100 tracking-tight">
                 Academic &amp; Professional Credential Repository
@@ -207,7 +230,9 @@ export default function App() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500 space-y-3">
             <div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-mono">Accessing IndexedDB Vault Storage...</span>
+            <span className="text-xs font-mono">
+              {hasCloudDb ? 'Connecting to Supabase Cloud Database...' : 'Accessing Local Vault Storage...'}
+            </span>
           </div>
         ) : filteredCertificates.length === 0 ? (
           <div className="glass-panel rounded-2xl p-12 text-center border border-slate-800/80 space-y-4">
@@ -311,6 +336,13 @@ export default function App() {
         isOpen={isApiKeyOpen}
         onClose={() => setIsApiKeyOpen(false)}
         onResetDemo={handleResetDemo}
+      />
+
+      {/* Supabase Cloud Database Configuration Modal */}
+      <SupabaseModal
+        isOpen={isSupabaseOpen}
+        onClose={() => setIsSupabaseOpen(false)}
+        onConfigUpdated={loadVault}
       />
     </div>
   );

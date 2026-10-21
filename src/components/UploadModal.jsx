@@ -12,6 +12,7 @@ import {
 import confetti from 'canvas-confetti';
 import { analyzeCertificateWithGemini, getStoredApiKey, getStoredModel } from '../services/gemini';
 import { scanQrCodeFromImage } from '../services/qrScanner';
+import { isSupabaseConfigured } from '../services/supabase';
 import TrustScoreGauge from './TrustScoreGauge';
 import ForensicChecklist from './ForensicChecklist';
 import MetadataPanel from './MetadataPanel';
@@ -429,7 +430,11 @@ export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal
         <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Ready to archive into secure IndexedDB vault</span>
+            <span>
+              {isSupabaseConfigured() 
+                ? 'Ready to archive into Supabase Cloud Database (+ Local Cache)' 
+                : 'Ready to archive into secure Local Vault'}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
