@@ -79,6 +79,36 @@ export default function App() {
     };
   }, []);
 
+  // Load certificates strictly for authenticated user
+  const loadVault = useCallback(async (overrideEmail, overridePhone) => {
+    const activeEmail = overrideEmail !== undefined ? overrideEmail : userProfile?.email;
+    const activePhone = overridePhone !== undefined ? overridePhone : userProfile?.phone;
+    if (!activeEmail && !activePhone) {
+      setCertificates([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const certs = await getAllCertificates(activeEmail, activePhone);
+      setCertificates(certs);
+    } catch (err) {
+      console.error('Failed to load certificates:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [userProfile?.email, userProfile?.phone]);
+
+  useEffect(() => {
+    if (userProfile?.email || userProfile?.phone) {
+      loadVault(userProfile.email, userProfile.phone);
+    } else {
+      setCertificates([]);
+      setLoading(false);
+    }
+  }, [userProfile, loadVault]);
+
   // Supabase Realtime Reaction Listener
   useEffect(() => {
     if (!hasCloudDb) return;
@@ -113,36 +143,6 @@ export default function App() {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [hasCloudDb, loadVault]);
-
-  // Load certificates strictly for authenticated user
-  const loadVault = useCallback(async (overrideEmail, overridePhone) => {
-    const activeEmail = overrideEmail !== undefined ? overrideEmail : userProfile?.email;
-    const activePhone = overridePhone !== undefined ? overridePhone : userProfile?.phone;
-    if (!activeEmail && !activePhone) {
-      setCertificates([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const certs = await getAllCertificates(activeEmail, activePhone);
-      setCertificates(certs);
-    } catch (err) {
-      console.error('Failed to load certificates:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [userProfile?.email, userProfile?.phone]);
-
-  useEffect(() => {
-    if (userProfile?.email || userProfile?.phone) {
-      loadVault(userProfile.email, userProfile.phone);
-    } else {
-      setCertificates([]);
-      setLoading(false);
-    }
-  }, [userProfile, loadVault]);
 
   // Filter & Sort computations
   const filteredCertificates = useMemo(() => {
