@@ -6,7 +6,6 @@ import {
   CheckCircle2, 
   AlertCircle, 
   ExternalLink, 
-  RotateCcw, 
   ShieldCheck, 
   Sparkles,
   Info
@@ -19,7 +18,7 @@ import {
   testApiKey 
 } from '../services/gemini';
 
-export default function ApiKeyModal({ isOpen, onClose, onResetDemo }) {
+export default function ApiKeyModal({ isOpen, onClose }) {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('gemini-2.5-flash');
   const [testing, setTesting] = useState(false);
@@ -77,7 +76,7 @@ export default function ApiKeyModal({ isOpen, onClose, onResetDemo }) {
     setApiKey('');
     setTestStatus({
       success: true,
-      message: 'API Key cleared. The app will now use the Intelligent Demo Simulation Engine.'
+      message: 'API Key cleared. The app will now use the Intelligent Built-in Forensic Engine.'
     });
   };
 
@@ -173,7 +172,7 @@ export default function ApiKeyModal({ isOpen, onClose, onResetDemo }) {
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
             <p className="text-[11px] text-slate-500">
-              Key is stored locally in your browser’s localStorage. If left blank, CertiVault AI operates seamlessly in Demo Simulation Mode!
+              Key is stored locally in your browser’s localStorage. If left blank, CertiVault AI operates seamlessly in Built-in Forensic Mode!
             </p>
           </div>
 
@@ -192,26 +191,6 @@ export default function ApiKeyModal({ isOpen, onClose, onResetDemo }) {
               <span className="leading-snug">{testStatus.message}</span>
             </div>
           )}
-
-          {/* Reset Demo Certificates */}
-          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-slate-300 text-xs">Reset Vault to Demo Certificates</p>
-              <p className="text-[11px] text-slate-500">Restore Coursera, NPTEL, Microsoft, and Fraud samples</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Restore default sample certificates to vault?')) {
-                  onResetDemo();
-                  onClose();
-                }
-              }}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Reset Demo
-            </button>
-          </div>
         </div>
 
         {/* Footer */}

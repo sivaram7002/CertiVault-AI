@@ -3,7 +3,6 @@ import {
   getAllCertificates, 
   saveCertificate, 
   deleteCertificate, 
-  resetVaultToDemo, 
   exportVaultJson, 
   importVaultJson 
 } from './services/storage';
@@ -23,7 +22,6 @@ import {
   FileCheck, 
   AlertTriangle, 
   Sparkles, 
-  RotateCcw,
   Plus,
   Eye,
   Award,
@@ -125,13 +123,6 @@ export default function App() {
     if (inspectedCert && inspectedCert.id === id) {
       setInspectedCert(null);
     }
-  };
-
-  const handleResetDemo = async () => {
-    setLoading(true);
-    const demoCerts = await resetVaultToDemo();
-    setCertificates(demoCerts);
-    setLoading(false);
   };
 
   const handleImportJson = async (json) => {
@@ -248,10 +239,10 @@ export default function App() {
             <div className="flex items-center justify-center gap-3 pt-2">
               {certificates.length === 0 ? (
                 <button
-                  onClick={handleResetDemo}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2"
+                  onClick={() => setIsUploadOpen(true)}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
                 >
-                  <RotateCcw className="w-4 h-4" /> Load Demo Certificates
+                  <Plus className="w-4 h-4" /> Deposit Certificate
                 </button>
               ) : (
                 <button
@@ -301,14 +292,7 @@ export default function App() {
           <div className="flex items-center gap-4 text-[11px] text-slate-400">
             <span>Powered by Gemini 2.5 Flash Vision</span>
             <span>•</span>
-            <span>Zero-Cloud Local Storage (IndexedDB)</span>
-            <span>•</span>
-            <button
-              onClick={handleResetDemo}
-              className="text-indigo-400 hover:underline"
-            >
-              Reset Demo Samples
-            </button>
+            <span>Supabase Cloud Database &amp; Local Vault</span>
           </div>
         </div>
       </footer>
@@ -335,7 +319,6 @@ export default function App() {
       <ApiKeyModal
         isOpen={isApiKeyOpen}
         onClose={() => setIsApiKeyOpen(false)}
-        onResetDemo={handleResetDemo}
       />
 
       {/* Supabase Cloud Database Configuration Modal */}

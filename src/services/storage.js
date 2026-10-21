@@ -1,4 +1,3 @@
-import { INITIAL_SAMPLE_CERTIFICATES } from './sampleCertificates';
 import { 
   isSupabaseConfigured, 
   fetchCertificatesFromSupabase, 
@@ -10,6 +9,13 @@ import {
 const DB_NAME = 'certivault_ai_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'certificates';
+
+const DEMO_CERT_IDS = new Set([
+  'cert-coursera-deeplearning-01',
+  'cert-nptel-cloud-02',
+  'cert-msft-internship-03',
+  'cert-tampered-meta-04'
+]);
 
 /**
  * Open or initialize the IndexedDB database
@@ -52,32 +58,24 @@ export function getStorageMode() {
 export async function getLocalCertificates() {
   try {
     const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.getAll();
 
     return new Promise((resolve) => {
-      request.onsuccess = async () => {
-        const certs = request.result;
-        if (!certs || certs.length === 0) {
-          // Auto-seed initial realistic demo certificates
-          await seedInitialCertificates();
-          resolve(INITIAL_SAMPLE_CERTIFICATES);
-        } else {
-          // Auto-migrate legacy cached Aditya Sharma sample cert if present
-          const sanitized = certs.map(c => {
-            if (c.studentName === 'Aditya Sharma' || c.id === 'cert-coursera-deeplearning-01') {
-              return {
-                ...c,
-                studentName: 'Sivaram Suresh',
-                fileName: c.fileName?.replace('Aditya_Sharma', 'Sivaram_Suresh') || c.fileName
-              };
-            }
-            return c;
-          });
-          // Sort newest uploaded first
-          resolve(sanitized.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
+      request.onsuccess = () => {
+        const certs = request.result || [];
+        
+        // Purge residual demo certificates if present in client's local store
+        const sanitized = certs.filter(c => !DEMO_CERT_IDS.has(c.id));
+        for (const c of certs) {
+          if (DEMO_CERT_IDS.has(c.id)) {
+            try { store.delete(c.id); } catch (e) {}
+          }
         }
+        
+        // Sort newest uploaded first
+        resolve(sanitized.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
       };
       request.onerror = () => {
         resolve(getFallbackLocalStorage());
@@ -95,7 +93,8 @@ export async function getLocalCertificates() {
 export async function getAllCertificates() {
   if (isSupabaseConfigured()) {
     try {
-      const remoteCerts = await fetchCertificatesFromSupabase();
+      const rawCerts = await fetchCertificatesFromSupabase();
+      const remoteCerts = (rawCerts || []).filter(c => !DEMO_CERT_IDS.has(c.id));
       
       // Cache remote certificates to local IndexedDB for instant offline availability
       if (Array.isArray(remoteCerts) && remoteCerts.length > 0) {
@@ -112,7 +111,6 @@ export async function getAllCertificates() {
         return remoteCerts;
       }
       
-      // If Supabase table is brand new and empty, return empty array so user can deposit their first certificate
       return remoteCerts || [];
     } catch (err) {
       console.warn('Failed to load certificates from Supabase, falling back to local vault:', err.message);
@@ -121,23 +119,6 @@ export async function getAllCertificates() {
   }
 
   return getLocalCertificates();
-}
-
-/**
- * Seed initial sample certificates to local storage
- */
-async function seedInitialCertificates() {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    for (const cert of INITIAL_SAMPLE_CERTIFICATES) {
-      store.put(cert);
-    }
-  } catch (e) {
-    console.warn('Failed to seed IndexedDB:', e);
-    saveFallbackLocalStorage(INITIAL_SAMPLE_CERTIFICATES);
-  }
 }
 
 /**
@@ -220,9 +201,9 @@ export async function deleteCertificate(id) {
 }
 
 /**
- * Reset vault to default demo certificates
+ * Clear all certificates from vault
  */
-export async function resetVaultToDemo() {
+export async function clearVault() {
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -232,21 +213,11 @@ export async function resetVaultToDemo() {
       clearRequest.onsuccess = () => resolve();
       clearRequest.onerror = () => reject(clearRequest.error);
     });
-    await seedInitialCertificates();
   } catch (err) {
-    saveFallbackLocalStorage(INITIAL_SAMPLE_CERTIFICATES);
+    saveFallbackLocalStorage([]);
   }
 
-  // Sync demo certificates to Supabase if configured
-  if (isSupabaseConfigured()) {
-    try {
-      await syncLocalCertificatesToSupabase(INITIAL_SAMPLE_CERTIFICATES);
-    } catch (err) {
-      console.warn('Could not sync demo certs to Supabase:', err);
-    }
-  }
-
-  return INITIAL_SAMPLE_CERTIFICATES;
+  return [];
 }
 
 /**
@@ -282,21 +253,12 @@ function getFallbackLocalStorage() {
     const data = localStorage.getItem('certivault_certificates');
     if (data) {
       const parsed = JSON.parse(data);
-      return parsed.map(c => {
-        if (c.studentName === 'Aditya Sharma' || c.id === 'cert-coursera-deeplearning-01') {
-          return {
-            ...c,
-            studentName: 'Sivaram Suresh',
-            fileName: c.fileName?.replace('Aditya_Sharma', 'Sivaram_Suresh') || c.fileName
-          };
-        }
-        return c;
-      });
+      return Array.isArray(parsed) ? parsed.filter(c => !DEMO_CERT_IDS.has(c.id)) : [];
     }
   } catch (e) {
     // ignore
   }
-  return INITIAL_SAMPLE_CERTIFICATES;
+  return [];
 }
 
 function saveFallbackLocalStorage(certs) {

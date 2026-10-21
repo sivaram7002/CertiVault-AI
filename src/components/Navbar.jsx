@@ -86,10 +86,10 @@ export default function Navbar({ onOpenUpload, onOpenApiKey, onOpenSupabase, onE
           >
             <span className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-amber-400 shadow-[0_0_8px_#f59e0b]'}`} />
             <span className="hidden md:inline text-slate-300">
-              {hasApiKey ? `${activeModel}` : 'Demo Simulation Mode'}
+              {hasApiKey ? `${activeModel}` : 'Built-in Engine'}
             </span>
             <span className="md:hidden text-slate-300">
-              {hasApiKey ? 'AI Ready' : 'Demo AI'}
+              {hasApiKey ? 'AI Ready' : 'Built-in'}
             </span>
             <Key className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition" />
           </button>
