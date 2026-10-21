@@ -55,7 +55,12 @@ export function getStorageMode() {
 /**
  * Get all certificates from local IndexedDB (or fallback to LocalStorage)
  */
-export async function getLocalCertificates() {
+export async function getLocalCertificates(userEmail) {
+  if (!userEmail) return [];
+
+  const normalizedEmail = userEmail.toLowerCase().trim();
+  const emailPrefix = normalizedEmail.split('@')[0];
+
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -74,26 +79,43 @@ export async function getLocalCertificates() {
           }
         }
         
+        // Strictly filter to authenticated owner's certificates
+        const userCerts = sanitized.filter(c => {
+          const owner = (c.ownerEmail || '').toLowerCase().trim();
+          if (owner === normalizedEmail) return true;
+          const fileName = (c.fileName || '').toLowerCase();
+          const studentName = (c.studentName || '').toLowerCase();
+          return fileName.includes(emailPrefix) || studentName.includes(emailPrefix);
+        });
+
         // Sort newest uploaded first
-        resolve(sanitized.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
+        resolve(userCerts.sort((a, b) => new Date(b.uploadedAt || b.issueDate) - new Date(a.uploadedAt || a.issueDate)));
       };
       request.onerror = () => {
-        resolve(getFallbackLocalStorage());
+        resolve(getFallbackLocalStorage(userEmail));
       };
     });
   } catch (err) {
     console.warn('Falling back to localStorage storage:', err);
-    return getFallbackLocalStorage();
+    return getFallbackLocalStorage(userEmail);
   }
 }
 
 /**
  * Get all certificates (Primary: Supabase Cloud DB if configured; Secondary: Local IndexedDB)
+ * Privacy Rule: If user is not authenticated, returns empty list (Private Vault Locked)
  */
-export async function getAllCertificates() {
+export async function getAllCertificates(userEmail) {
+  if (!userEmail) {
+    // Unauthenticated visitors have ZERO access to uploaded documents
+    return [];
+  }
+
+  const normalizedEmail = userEmail.toLowerCase().trim();
+
   if (isSupabaseConfigured()) {
     try {
-      const rawCerts = await fetchCertificatesFromSupabase();
+      const rawCerts = await fetchCertificatesFromSupabase(normalizedEmail);
       const remoteCerts = (rawCerts || []).filter(c => !DEMO_CERT_IDS.has(c.id));
       
       // Cache remote certificates to local IndexedDB for instant offline availability
@@ -114,20 +136,23 @@ export async function getAllCertificates() {
       return remoteCerts || [];
     } catch (err) {
       console.warn('Failed to load certificates from Supabase, falling back to local vault:', err.message);
-      return getLocalCertificates();
+      return getLocalCertificates(normalizedEmail);
     }
   }
 
-  return getLocalCertificates();
+  return getLocalCertificates(normalizedEmail);
 }
 
 /**
  * Save or update a certificate (Writes to Supabase Cloud DB + Local IndexedDB)
  */
-export async function saveCertificate(certificate) {
+export async function saveCertificate(certificate, userEmail) {
+  const assignedOwner = (userEmail || certificate.ownerEmail || '').toLowerCase().trim();
   const certToSave = {
     ...certificate,
     id: certificate.id || `cert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    isPrivate: true,
+    ownerEmail: assignedOwner,
     uploadedAt: certificate.uploadedAt || new Date().toISOString(),
   };
 
@@ -248,12 +273,26 @@ export async function importVaultJson(jsonData) {
 }
 
 // Fallback LocalStorage Helpers
-function getFallbackLocalStorage() {
+function getFallbackLocalStorage(userEmail) {
+  if (!userEmail) return [];
+  const normalizedEmail = userEmail.toLowerCase().trim();
+  const emailPrefix = normalizedEmail.split('@')[0];
+
   try {
     const data = localStorage.getItem('certivault_certificates');
     if (data) {
       const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed.filter(c => !DEMO_CERT_IDS.has(c.id)) : [];
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(c => !DEMO_CERT_IDS.has(c.id))
+          .filter(c => {
+            const owner = (c.ownerEmail || '').toLowerCase().trim();
+            if (owner === normalizedEmail) return true;
+            const fileName = (c.fileName || '').toLowerCase();
+            const studentName = (c.studentName || '').toLowerCase();
+            return fileName.includes(emailPrefix) || studentName.includes(emailPrefix);
+          });
+      }
     }
   } catch (e) {
     // ignore

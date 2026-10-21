@@ -27,7 +27,9 @@ import {
   Plus,
   Eye,
   Award,
-  Database
+  Database,
+  Lock,
+  Mail
 } from 'lucide-react';
 
 export default function App() {
@@ -55,7 +57,11 @@ export default function App() {
   // Load user profile on startup and listen for OAuth changes
   useEffect(() => {
     getCurrentProfile().then(p => {
-      if (p) setUserProfile(p);
+      if (p) {
+        setUserProfile(p);
+      } else {
+        setLoading(false);
+      }
     });
 
     const unsubscribe = subscribeToAuthEvents((p) => {
@@ -67,22 +73,34 @@ export default function App() {
     };
   }, []);
 
-  // Load certificates
-  const loadVault = useCallback(async () => {
+  // Load certificates strictly for authenticated user
+  const loadVault = useCallback(async (overrideEmail) => {
+    const activeEmail = overrideEmail || userProfile?.email;
+    if (!activeEmail) {
+      setCertificates([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const certs = await getAllCertificates();
+      const certs = await getAllCertificates(activeEmail);
       setCertificates(certs);
     } catch (err) {
       console.error('Failed to load certificates:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userProfile?.email]);
 
   useEffect(() => {
-    loadVault();
-  }, [loadVault]);
+    if (userProfile?.email) {
+      loadVault(userProfile.email);
+    } else {
+      setCertificates([]);
+      setLoading(false);
+    }
+  }, [userProfile, loadVault]);
 
   // Filter & Sort computations
   const filteredCertificates = useMemo(() => {
@@ -128,12 +146,12 @@ export default function App() {
 
   // Handlers
   const handleSaveCertificate = async (newCert) => {
-    const saved = await saveCertificate(newCert);
+    const saved = await saveCertificate(newCert, userProfile?.email);
     setCertificates(prev => [saved, ...prev.filter(c => c.id !== saved.id)]);
   };
 
   const handleUpdateCertificate = async (updatedCert) => {
-    const saved = await saveCertificate(updatedCert);
+    const saved = await saveCertificate(updatedCert, userProfile?.email);
     setCertificates(prev => prev.map(c => c.id === saved.id ? saved : c));
     setInspectedCert(saved);
   };
@@ -225,80 +243,126 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* 1. Dashboard Summary Stats Bar */}
-        <StatsBar certificates={certificates} />
-
-        {/* 2. Filter, Search & View Controls */}
-        <FilterBar
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          selectedStatus={selectedStatus}
-          setSelectedStatus={setSelectedStatus}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-        />
-
-        {/* 3. Certificate Grid or Table */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-500 space-y-3">
-            <div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-mono">
-              {hasCloudDb ? 'Connecting to Supabase Cloud Database...' : 'Accessing Local Vault Storage...'}
-            </span>
-          </div>
-        ) : filteredCertificates.length === 0 ? (
-          <div className="glass-panel rounded-2xl p-12 text-center border border-slate-800/80 space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 mx-auto flex items-center justify-center text-slate-500 border border-slate-800">
-              <FileCheck className="w-7 h-7" />
+        {!userProfile ? (
+          <div className="glass-panel rounded-3xl p-8 sm:p-14 text-center border border-indigo-500/30 max-w-2xl mx-auto space-y-6 shadow-2xl relative overflow-hidden my-6">
+            <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/30 mx-auto flex items-center justify-center text-indigo-400 shadow-xl shadow-indigo-500/10">
+              <Lock className="w-8 h-8 text-indigo-400" />
             </div>
-            <div className="space-y-1">
-              <h3 className="text-base font-bold text-slate-200">No certificates match your query</h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Try modifying your search keywords or deposit a new course or internship certificate.
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-bold">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Private Credential Vault
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-100 tracking-tight">
+                Uploaded Documents are Confidential &amp; Private
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
+                All certificates, PDFs, and forensic audit records in this vault are strictly private and unavailable to the public. Please connect with your Gmail account to access and inspect your personal documents.
               </p>
             </div>
-            <div className="flex items-center justify-center gap-3 pt-2">
-              {certificates.length === 0 ? (
-                <button
-                  onClick={() => setIsUploadOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
-                >
-                  <Plus className="w-4 h-4" /> Deposit Certificate
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedStatus('All');
-                  }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-                >
-                  Clear Search Filters
-                </button>
-              )}
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                onClick={() => setIsProfileOpen(true)}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-red-500 via-rose-500 to-amber-500 hover:from-red-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm shadow-xl shadow-red-500/25 transition flex items-center justify-center gap-2.5"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Sign In with Gmail to Unlock Vault</span>
+              </button>
+
+              <button
+                onClick={() => setIsUploadOpen(true)}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <span>Deposit New Document</span>
+              </button>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800/80 flex items-center justify-center gap-6 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Owner Isolation</span>
+              <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-indigo-400" /> Private Cloud Storage</span>
+              <span className="flex items-center gap-1.5"><Database className="w-3.5 h-3.5 text-sky-400" /> Zero Public Access</span>
             </div>
           </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredCertificates.map((cert) => (
-              <CertificateCard
-                key={cert.id}
-                certificate={cert}
+        ) : (
+          <>
+            {/* 1. Dashboard Summary Stats Bar */}
+            <StatsBar certificates={certificates} />
+
+            {/* 2. Filter, Search & View Controls */}
+            <FilterBar
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              selectedStatus={selectedStatus}
+              setSelectedStatus={setSelectedStatus}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+            />
+
+            {/* 3. Certificate Grid or Table */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-500 space-y-3">
+                <div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-mono">
+                  {hasCloudDb ? 'Connecting to Supabase Cloud Database...' : 'Accessing Local Vault Storage...'}
+                </span>
+              </div>
+            ) : filteredCertificates.length === 0 ? (
+              <div className="glass-panel rounded-2xl p-12 text-center border border-slate-800/80 space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-slate-900 mx-auto flex items-center justify-center text-slate-500 border border-slate-800">
+                  <FileCheck className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-slate-200">No private certificates match your query</h3>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Try modifying your search keywords or deposit a new course or internship certificate to your private vault.
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  {certificates.length === 0 ? (
+                    <button
+                      onClick={() => setIsUploadOpen(true)}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+                    >
+                      <Plus className="w-4 h-4" /> Deposit Certificate
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSelectedStatus('All');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                    >
+                      Clear Search Filters
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {filteredCertificates.map((cert) => (
+                  <CertificateCard
+                    key={cert.id}
+                    certificate={cert}
+                    onInspect={(c) => setInspectedCert(c)}
+                    onDelete={handleDeleteCertificate}
+                    onDownload={handleDownloadCertificate}
+                  />
+                ))}
+              </div>
+            ) : (
+              <CertificateTable
+                certificates={filteredCertificates}
                 onInspect={(c) => setInspectedCert(c)}
                 onDelete={handleDeleteCertificate}
                 onDownload={handleDownloadCertificate}
               />
-            ))}
-          </div>
-        ) : (
-          <CertificateTable
-            certificates={filteredCertificates}
-            onInspect={(c) => setInspectedCert(c)}
-            onDelete={handleDeleteCertificate}
-            onDownload={handleDownloadCertificate}
-          />
+            )}
+          </>
         )}
       </main>
 

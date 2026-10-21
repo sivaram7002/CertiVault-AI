@@ -101,9 +101,9 @@ export default function InspectionModal({ certificate, isOpen, onClose, onUpdate
                 <h2 className="text-base font-bold text-slate-100 truncate" title={courseTitle}>
                   {courseTitle || 'Certificate Inspection'}
                 </h2>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  <Lock className="w-2.5 h-2.5" />
-                  Static Record
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/30">
+                  <Lock className="w-2.5 h-2.5 text-indigo-400" />
+                  Private Credential (Confidential)
                 </span>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-2">

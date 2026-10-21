@@ -12,7 +12,8 @@ import {
   ShieldAlert,
   Search,
   Hash,
-  Eye
+  Eye,
+  Lock
 } from 'lucide-react';
 import TrustScoreGauge from './TrustScoreGauge';
 
@@ -63,11 +64,15 @@ export default function CertificateCard({ certificate, onInspect, onDelete, onDo
       {/* Top Banner / Platform Header */}
       <div className="p-4 pb-3">
         <div className="flex items-start justify-between gap-3 mb-2">
-          {/* Platform */}
-          <div className="flex items-center gap-1.5">
+          {/* Platform & Private Badge */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-800/90 text-slate-200 border border-slate-700/60 flex items-center gap-1.5 shadow-sm">
               <Award className="w-3.5 h-3.5 text-indigo-400" />
               {platform || 'Issuer'}
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5 text-indigo-400" />
+              Private
             </span>
           </div>
 

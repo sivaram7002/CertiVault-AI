@@ -196,6 +196,7 @@ export default function UploadModal({ isOpen, onClose, onSave, onOpenApiKeyModal
         credentialMarkers: { status: 'Pass', details: 'Standard verification code format confirmed.' },
         visualIntegrity: { status: 'Pass', details: 'Zero compression tampering artifacts detected.' }
       },
+      isPrivate: true,
       fileData: fileData,
       fileName: fileName || 'uploaded_certificate',
       fileType: fileType || 'application/pdf',

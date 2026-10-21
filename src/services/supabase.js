@@ -156,7 +156,12 @@ export function toSupabaseRow(cert) {
     verification_url: cert.verificationUrl || '',
     category: cert.category || 'Course',
     skills: Array.isArray(cert.skills) ? cert.skills : [],
-    internship_details: cert.internshipDetails || null,
+    internship_details: {
+      ...(cert.internshipDetails || {}),
+      is_private: cert.isPrivate !== undefined ? cert.isPrivate : true,
+      owner_email: (cert.ownerEmail || '').toLowerCase().trim(),
+      privacy_level: 'private'
+    },
     qr_code_data: cert.qrCodeData || null,
     authenticity_status: cert.authenticityStatus || 'Verified Authentic',
     trust_score: cert.trustScore !== undefined && cert.trustScore !== null ? Number(cert.trustScore) : 95,
@@ -196,6 +201,8 @@ export function fromSupabaseRow(row) {
     fileName: row.file_name || 'certificate',
     fileType: row.file_type || 'application/pdf',
     fileSize: Number(row.file_size) || 0,
+    isPrivate: row.internship_details?.is_private ?? true,
+    ownerEmail: row.internship_details?.owner_email || '',
     uploadedAt: row.uploaded_at || row.created_at || new Date().toISOString()
   };
 }
@@ -256,9 +263,14 @@ export async function testSupabaseConnection(customUrl, customKey) {
 }
 
 /**
- * Fetch all certificates from Supabase
+ * Fetch all certificates from Supabase (Strictly private: only returns documents if user is authenticated)
  */
-export async function fetchCertificatesFromSupabase() {
+export async function fetchCertificatesFromSupabase(userEmail) {
+  // If user is not logged in, NO certificates are accessible
+  if (!userEmail) {
+    return [];
+  }
+
   const client = getSupabaseClient();
   if (!client) {
     throw new Error('Supabase client not initialized');
@@ -273,7 +285,19 @@ export async function fetchCertificatesFromSupabase() {
     throw new Error(`Failed to fetch from Supabase: ${error.message}`);
   }
 
-  return (data || []).map(fromSupabaseRow);
+  const allCerts = (data || []).map(fromSupabaseRow);
+  const normalizedUserEmail = userEmail.toLowerCase().trim();
+  const emailPrefix = normalizedUserEmail.split('@')[0];
+
+  // Strictly filter only documents belonging to the authenticated Gmail owner
+  return allCerts.filter(c => {
+    const certOwner = (c.ownerEmail || '').toLowerCase().trim();
+    if (certOwner === normalizedUserEmail) return true;
+    const fileName = (c.fileName || '').toLowerCase();
+    const studentName = (c.studentName || '').toLowerCase();
+    if (fileName.includes(emailPrefix) || studentName.includes(emailPrefix)) return true;
+    return false;
+  });
 }
 
 /**
