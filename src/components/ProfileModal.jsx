@@ -79,11 +79,20 @@ export default function ProfileModal({
     try {
       await signInWithGoogleOAuth();
     } catch (err) {
-      setErrorMessage(
-        err.message?.includes('provider is not enabled') 
-          ? 'Google OAuth provider is not yet activated in your Supabase Dashboard. You can use the "Gmail Credentials" tab for immediate 1-click access!'
-          : (err.message || 'Failed to initialize Google Sign-In.')
-      );
+      const msg = err.message || '';
+      const isProviderDisabled = 
+        msg.toLowerCase().includes('provider is not enabled') ||
+        msg.toLowerCase().includes('unsupported provider') ||
+        msg.toLowerCase().includes('validation_failed');
+
+      if (isProviderDisabled) {
+        setActiveTab('gmail');
+        setErrorMessage(
+          'Google OAuth provider is not enabled in your Supabase project yet. We have switched you to Gmail Credentials — enter your Gmail address below to sign in immediately without any setup!'
+        );
+      } else {
+        setErrorMessage(msg || 'Failed to initialize Google Sign-In.');
+      }
     } finally {
       setLoading(false);
     }
@@ -453,9 +462,22 @@ export default function ProfileModal({
                     )}
                   </button>
 
-                  <p className="text-[10px] text-center text-slate-500">
-                    If Google OAuth is not configured on Supabase yet, switch to <strong>Gmail Credentials</strong> for instant 1-click access.
-                  </p>
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400 space-y-2 text-left">
+                    <p>
+                      💡 <strong>Instant Access:</strong> Switch to the <button type="button" onClick={() => setActiveTab('gmail')} className="text-red-400 underline font-semibold">Gmail Credentials</button> tab above for immediate access with zero setup needed!
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      To use this Google button, enable Google in your{' '}
+                      <a 
+                        href="https://supabase.com/dashboard/project/gibshdomtzplafeqfeqh/auth/providers" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-indigo-400 underline hover:text-indigo-300 inline-flex items-center gap-1"
+                      >
+                        Supabase Providers Dashboard <ExternalLink className="w-2.5 h-2.5" />
+                      </a>.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
